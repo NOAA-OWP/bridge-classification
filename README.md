@@ -163,11 +163,10 @@ data/
 
 The pipeline uses the following classification scheme:
 
-- **0**: Background/Unclassified
-- **1**: Ground (from SMRF ground filtering)
-- **2**: Water
-- **3**: Bridge Deck (target class)
-- **4**: Obstacles/High Noise (cars, poles, etc.)
+- **0**: Background/Unclassified (included merged piers/pylons)
+- **1**: Ground/ Water (Non-Bridge Surface)
+- **2**: Bridge Deck (Primary Target)
+- **3**: Obstacles (Cars, Poles, High Noise)
 
 ## Output Structure
 

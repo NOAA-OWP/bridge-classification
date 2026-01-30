@@ -36,14 +36,28 @@ except ImportError:
 # 3: Bridge Deck (Target)
 # 4: Obstacles (Cars, Poles, High Noise)
 
+# LAS_TO_MODEL_MAP = {
+#     2: 1,   # Ground -> 1
+#     9: 2,   # Water -> 2
+#     17: 3,  # Bridge Deck -> 3
+#     18: 4,  # High Noise -> 4
+#     # All other inputs (1, 7, etc.) map to 0 (Background)
+# }
+
+# --- LOGICAL CLASS MAPPING ---
+# Maps standard ASPRS/LAS codes to Model Training Labels (0-4)
+# 0: Background/Unclassified (included merged piers/pylons)
+# 1: Ground/ Water (Non-Bridge Surface)
+# 2: Bridge Deck (Primary Target)
+# 3: Obstacles (Cars, Poles, High Noise)
+
 LAS_TO_MODEL_MAP = {
     2: 1,   # Ground -> 1
-    9: 2,   # Water -> 2
-    17: 3,  # Bridge Deck -> 3
-    18: 4,  # High Noise -> 4
+    9: 1,   # Water -> 1
+    17: 2,  # Bridge Deck -> 2
+    18: 3,  # High Noise -> 3
     # All other inputs (1, 7, etc.) map to 0 (Background)
 }
-
 
 def normalize_intensity(intensity_array: np.ndarray) -> np.ndarray:
     """

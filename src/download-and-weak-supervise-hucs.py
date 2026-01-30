@@ -332,8 +332,8 @@ class WeakSupervisionPipeline:
         buffered_geom = bridge_geometry.buffer(buffer_meters)
         pdal_polygon = buffered_geom.wkt
 
-        # Construct PDAL Pipeline (Read + SMRF)
-        pipeline_json = {
+        # Stage 1: Read only (Get Raw Data)
+        read_pipeline_json = {
             "pipeline": [
                 {
                     "type": "readers.ept",
@@ -341,20 +341,12 @@ class WeakSupervisionPipeline:
                     "polygon": pdal_polygon,
                     "requests": config.pdal_ept_requests,
                     "resolution": config.pdal_ept_resolution
-                },
-                {
-                    "type": "filters.smrf",
-                    "ignore": config.pdal_smrf_ignore,
-                    "scalar": config.pdal_smrf_scalar,
-                    "slope": config.pdal_smrf_slope,
-                    "threshold": config.pdal_smrf_threshold,
-                    "window": config.pdal_smrf_window
                 }
             ]
         }
 
         try:
-            pipeline = pdal.Pipeline(json.dumps(pipeline_json))
+            pipeline = pdal.Pipeline(json.dumps(read_pipeline_json))
             count = pipeline.execute()
 
             if count == 0:
@@ -363,11 +355,40 @@ class WeakSupervisionPipeline:
                     'error': 'No points found in lidar data for this bridge geometry'
                 }
 
-            arrays = pipeline.arrays[0]
+            original_arrays = pipeline.arrays[0]
 
-            # Create a copy of the original arrays before modification
-            # This will be saved to source_path (original with SMRF, before classification)
-            original_arrays = arrays.copy()
+            # Stage 2: Process with SMRF
+            # Construct PDAL Pipeline (Read + SMRF)
+            smrf_pipeline_json = {
+                "pipeline": [
+                    {
+                        "type": "readers.ept",
+                        "filename": ept_url,
+                        "polygon": pdal_polygon,
+                        "requests": config.pdal_ept_requests,
+                        "resolution": config.pdal_ept_resolution
+                    },
+                    {
+                        "type": "filters.smrf",
+                        "ignore": config.pdal_smrf_ignore,
+                        "scalar": config.pdal_smrf_scalar,
+                        "slope": config.pdal_smrf_slope,
+                        "threshold": config.pdal_smrf_threshold,
+                        "window": config.pdal_smrf_window
+                    }
+                ]
+            }
+
+            smrf_pipeline = pdal.Pipeline(json.dumps(smrf_pipeline_json))
+            count = smrf_pipeline.execute()
+
+            if count == 0:
+                return {
+                    'success': False,
+                    'error': 'No points found in lidar data for this bridge geometry'
+                }
+
+            arrays = smrf_pipeline.arrays[0]
 
             # Extract Data for Processing
             X = arrays['X']
