@@ -22,13 +22,59 @@ The pipeline processes bridge geometries from OpenStreetMap, finds intersecting 
 
 ### Setup
 
-#### Option 1: Quick Install (Recommended)
+#### Option 1: Docker (Recommended)
 
-This project includes an `environment.yml` file that handles all dependencies, including geospatial libraries and CUDA-accelerated ML tools.
+We use Docker to manage the complex geospatial (GDAL/PDAL) and GPU (CUDA) dependencies. This ensures the environment works consistently across different machines.
+
+**Build the image:**
+
+```bash
+# If on Linux/Windows (Standard)
+docker compose build
+
+# If on Mac (Build only - cannot run GPU training locally)
+docker build --platform linux/amd64 -t bridge-classifier .
+```
+
+**Run the Pipeline**:
+
+```bash
+# Step 1: Download & Weak Supervision
+docker compose run --rm bridge-classifier python src/download-and-weak-supervise-hucs.py
+
+# Step 2: Preprocess & Normalization
+docker compose run --rm bridge-classifier python src/preprocess_bridges.py
+
+# Step 3: Train Model (Requires NVIDIA GPU)
+docker compose run --rm bridge-classifier python src/train.py
+```
+
+**Development Mode**:
+
+This opens an interactive shell inside the container where you can run scripts manually or debug.
+
+```bash
+docker compose run --rm bridge-classifier
+# or manually:
+# docker run --gpus all -v "$(pwd):/app" -it bridge-classifier
+```
+
+Once inside the container:
+
+```bash
+python src/download-and-weak-supervise-hucs.py ...
+python src/preprocess_bridges.py ...
+python src/train.py ...
+# Type 'exit' to leave the container
+```
+
+#### Option 2: Local Conda Install
+
+If you prefer to run locally without Docker, this project includes an `environment.yaml` file that handles all dependencies, including geospatial libraries and CUDA-accelerated ML tools.
 
 ```bash
 # 1. Create the environment from file
-mamba env create -f environment.yml
+mamba env create -f environment.yaml
 
 # 2. Activate the environment
 mamba activate bridge-classify
@@ -47,7 +93,7 @@ mamba install -c conda-forge libstdcxx-ng
 export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
 ```
 
-#### Option 2: Manual Installation
+#### Option 3: Manual Installation
 
 If the YAML installation fails or you need to build the environment step-by-step, follow these commands:
 

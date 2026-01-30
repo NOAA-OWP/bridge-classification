@@ -1,0 +1,42 @@
+# Data and large dirs (mount at runtime)
+data/
+archieve/
+src_copy/
+qgis_projects/
+logs/
+lightning_logs/
+checkpoints/
+experiments/
+.ipynb_checkpoints/
+
+# Version control and IDE
+.git/
+.gitignore
+.idea/
+.vscode/
+.cursor/
+
+# Python and conda cache
+__pycache__/
+*.py[cod]
+*$py.class
+.conda/
+.venv/
+venv/
+.env/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Build and packaging
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Docs and misc
+*.md
+!README.md
+.DS_Store
+*.log

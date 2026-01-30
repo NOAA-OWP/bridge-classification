@@ -1,0 +1,28 @@
+services:
+  bridge-classifier:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: bridge-classifier
+    working_dir: /app
+    volumes:
+      # Mount local directory
+      - .:/app
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    # Optional: help with libstdc++ on some hosts
+    environment:
+      - MAMBA_DOCKERFILE_ACTIVATE=1
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - LD_LIBRARY_PATH=/opt/conda/lib:${LD_LIBRARY_PATH:-}
+    stdin_open: true
+    tty: true
+    command: ["/bin/bash"]
+    # setup shared memory size for PyTorch dataloaders
+    shm_size: '8gb'
