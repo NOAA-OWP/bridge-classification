@@ -45,9 +45,14 @@ docker compose run --rm bridge-classifier python src/download-and-weak-supervise
 # Step 2: Preprocess & Normalization
 docker compose run --rm bridge-classifier python src/preprocess_bridges.py
 
-# Step 3: Train Model (Requires NVIDIA GPU)
-docker compose run --rm bridge-classifier python src/train.py
+# Step 3: Split data (train/val/test)
+docker compose run --rm bridge-classifier python utils/split_data.py --symlink
+
+# Step 4: Train Model (Requires NVIDIA GPU)
+docker compose run --rm bridge-classifier python src/train.py --train --augment --val-dir='./data/ml-data/validation' --train-dir='./data/ml-data/training'
 ```
+
+Optional: To compute class weights from the training set (e.g. for imbalanced loss), run `docker compose run --rm bridge-classifier utils/calculate_weights.py --data-dir ./data/ml-data/training` after the split step.
 
 **Development Mode**:
 

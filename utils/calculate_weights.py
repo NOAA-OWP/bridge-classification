@@ -1,14 +1,17 @@
 """
 Calculate class weights for imbalanced segmentation from preprocessed JSON metadata.
 
-Reads all *.json files under the silver_training_normalized directory. Each JSON
-must have a "class_distribution" object with string keys ("0", "1", ...) and
-integer counts per class. Aggregates counts across files and computes
-inverse-frequency weights: W_c = Total_Points / (N_classes * Count_c).
+Reads all *.json files under the given data directory. Each JSON must have a
+"class_distribution" object with string keys ("0", "1", ...) and integer counts
+per class. Aggregates counts across files and computes inverse-frequency weights:
+W_c = Total_Points / (N_classes * Count_c).
 
 Usage:
     python utils/calculate_weights.py [--data-dir PATH] [--output weights.json]
     Then copy the printed list into train.py (argument --class-weights).
+
+    After running utils/split_data.py, use the training folder so weights reflect
+    the actual training set: --data-dir ./data/ml-data/training
 """
 
 import argparse
