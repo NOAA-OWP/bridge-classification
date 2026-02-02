@@ -72,18 +72,16 @@ from model import SparseUNet
 # Class label mapping for visualization
 CLASS_COLORS = {
     0: 'black',    # Background/Unclassified
-    1: 'green',    # Ground
-    2: 'blue',     # Water
-    3: 'red',      # Bridge Deck
-    4: 'yellow'    # Obstacles/High Noise
+    1: 'orange',    # Ground/Water
+    2: 'blue',      # Bridge Deck
+    3: 'yellow'    # Obstacles/High Noise
 }
 
 CLASS_NAMES = {
     0: 'Background',
-    1: 'Ground',
-    2: 'Water',
-    3: 'Bridge Deck',
-    4: 'Obstacles'
+    1: 'Ground/Water',
+    2: 'Bridge Deck',
+    3: 'Obstacles',
 }
 
 
@@ -295,7 +293,7 @@ if HAS_LIGHTNING:
         def __init__(
             self,
             input_channels=1,
-            num_classes=5,
+            num_classes=4,
             base_channels=16,
             learning_rate=0.001,
             weight_decay=0.01,
@@ -322,9 +320,13 @@ if HAS_LIGHTNING:
             self.learning_rate = learning_rate
             self.weight_decay = weight_decay
 
-            # Default class weights: [Background, Ground, Water, Deck, Obstacle]
+            # Default class weights: [Background, Ground/ Water, Bridge Deck, Obstacle]
+            # calculated weights from utils/calculate_weights.py
             if class_weights is None:
-                class_weights = [0.1, 0.5, 0.5, 2.0, 1.5]
+                # mac
+                # class_weights = [5.554448601617274, 1.3683353169973125, 0.3819817544841005, 2.122137404580153]
+                # ubuntu server
+                class_weights = [5.541478352538639, 1.3688236995495695, 0.38211636815295946, 2.1187130327090355]
 
             self.register_buffer('class_weights', torch.tensor(class_weights, dtype=torch.float32))
             self.criterion = nn.CrossEntropyLoss(weight=self.class_weights)
@@ -350,7 +352,7 @@ if HAS_LIGHTNING:
             # coords[:, 1:] gets X, Y, Z columns
             max_coords = coords[:, 1:].max(dim=0)[0]
             # limit = max_coords + 5
-            # # Align to 32
+            # # Align to 32 if needed
             # spatial_shape = ((limit + 31) // 32 * 32).int().tolist()
 
             # Add small padding to be safe
@@ -371,21 +373,48 @@ if HAS_LIGHTNING:
 
             # Calculate Metrics
             preds = torch.argmax(output, dim=1)
-            deck_mask = (labels == 3)
 
-            # Deck Accuracy (Recall)
-            deck_acc = 0.0
-            if deck_mask.sum() > 0:
-                correct_deck = (preds[deck_mask] == labels[deck_mask]).sum().float()
-                deck_acc = (correct_deck / deck_mask.sum().float()) * 100.0
+            # --- METRICS FOR BRIDGE DECK (CLASS 2) ---
+            deck_target = (labels == 2)
+            deck_pred = (preds == 2)
 
-            # Overall Accuracy
+            # 1. Deck Recall (Accuracy on deck points)
+            # "Of the real deck points, how many did we find?"
+            deck_recall = 0.0
+            if deck_target.sum() > 0:
+                correct_deck = (preds[deck_target] == labels[deck_target]).sum().float()
+                deck_recall = (correct_deck / deck_target.sum().float()) * 100.0
+
+            # 2. Deck Precision
+            # "Of the points we called 'deck', how many were actually deck?"
+            deck_precision = 0.0
+            if deck_pred.sum() > 0:
+                true_positives = (deck_pred & deck_target).sum().float()
+                deck_precision = (true_positives / deck_pred.sum().float()) * 100.0
+
+            # 3. Deck IoU (Intersection over Union)
+            # The gold standard for segmentation. Penalizes both false positives and false negatives.
+            deck_iou = 0.0
+            intersection = (deck_pred & deck_target).sum().float()
+            union = (deck_pred | deck_target).sum().float()
+
+            if union > 0:
+                deck_iou = (intersection / union) * 100.0
+
+            # 4. Overall Accuracy
             overall_acc = (preds == labels).float().mean() * 100.0
 
             # Logging
+            # Loss (progress bar)
             self.log(f'{prefix}_loss', loss, on_step=(prefix=='train'), on_epoch=True, prog_bar=True)
-            self.log(f'{prefix}_deck_acc', deck_acc, on_step=(prefix=='train'), on_epoch=True, prog_bar=True)
-            self.log(f'{prefix}_overall_acc', overall_acc, on_step=(prefix=='train'), on_epoch=True)
+
+            # Deck IoU (progress bar - this is your most important metric)
+            self.log(f'{prefix}_deck_iou', deck_iou, on_step=(prefix=='train'), on_epoch=True, prog_bar=True)
+
+            # Detailed Metrics (logged but hidden from progress bar to keep it clean)
+            self.log(f'{prefix}_deck_recall', deck_recall, on_step=(prefix=='train'), on_epoch=True, prog_bar=False)
+            self.log(f'{prefix}_deck_precision', deck_precision, on_step=(prefix=='train'), on_epoch=True, prog_bar=False)
+            self.log(f'{prefix}_overall_acc', overall_acc, on_step=(prefix=='train'), on_epoch=True, prog_bar=False)
 
             return loss
 
@@ -404,7 +433,16 @@ if HAS_LIGHTNING:
                 lr=self.learning_rate,
                 weight_decay=self.weight_decay
             )
-            return optimizer
+            # Add ReduceLROnPlateau
+            scheduler = {
+                'scheduler': optim.lr_scheduler.ReduceLROnPlateau(
+                    optimizer, mode='min', factor=0.5, patience=5, min_lr=1e-6
+                ),
+                'monitor': 'val_loss', # Required for ReduceLROnPlateau
+                'interval': 'epoch',
+                'frequency': 1
+            }
+            return [optimizer], [scheduler]
 
 
     class BridgeDataModule(LightningDataModule):
@@ -830,7 +868,7 @@ def main():
         # Create model
         model = BridgeLightningModule(
             input_channels=1,
-            num_classes=5,
+            num_classes=4,
             base_channels=args.base_channels,
             learning_rate=args.learning_rate,
             weight_decay=args.weight_decay,
