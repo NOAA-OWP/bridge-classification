@@ -47,12 +47,15 @@ docker compose run --rm bridge-classifier python src/preprocess_bridges.py
 
 # Step 3: Split data (train/val/test)
 docker compose run --rm bridge-classifier python utils/split_data.py --symlink
+# docker compose run --rm bridge-classifier python utils/split_data.py --train-ratio 0.75 --test-ratio 0.1
 
 # Step 4: Train Model (Requires NVIDIA GPU)
-docker compose run --rm bridge-classifier python src/train.py --train --augment --val-dir='./data/ml-data/validation' --train-dir='./data/ml-data/training'
+docker compose run --rm bridge-classifier python src/train.py --train --augment --val-dir='./data/ml-data/validation' --train-dir='./data/ml-data/training' --epochs 50 --batch-size 16 --exp-name bridge-base-v0
 ```
 
 Optional: To compute class weights from the training set (e.g. for imbalanced loss), run `docker compose run --rm bridge-classifier utils/calculate_weights.py --data-dir ./data/ml-data/training` after the split step.
+
+Note: If you run into permission denied error, make sure proper permission is provided by running `chmod -R 777 <folder>`.
 
 **Development Mode**:
 
@@ -213,3 +216,34 @@ The normalization script generates JSON metadata files with the following struct
     }
 }
 ```
+
+### Visualizing training metrics
+
+Training (Step 4) writes metrics via Lightning CSVLogger to `./experiments/<exp_name>/version_<N>/metrics.csv`. The script `utils/visualize_metrics.py` plots loss and deck/overall accuracy curves and saves `training_curves.png` in the same directory.
+
+**Examples:**
+
+- Default (loads `./experiments/bridge_classify_base/version_0/metrics.csv`):
+
+  ```bash
+  python utils/visualize_metrics.py
+  ```
+
+- Specific experiment and version:
+
+  ```bash
+  python utils/visualize_metrics.py --exp bridge_classify_base --ver 0
+  # optionally: --root ./experiments
+  ```
+
+- Direct path to a metrics file:
+
+  ```bash
+  python utils/visualize_metrics.py --csv ./experiments/bridge_classify_base/version_0/metrics.csv
+  ```
+
+- With Docker:
+
+  ```bash
+  docker compose run --rm bridge-classifier python utils/visualize_metrics.py
+  ```

@@ -207,7 +207,7 @@ class BridgeDataset(Dataset):
         feat = data[:, 3:4]  # Intensity is the only feature for now
         labels = data[:, 4].astype(np.int64)
 
-        # Your preprocessing centers data at the mean (e.g., -50 to +50).
+        # Preprocessing centers data at the mean (e.g., -50 to +50).
         # SpConv indices MUST be positive (0 to 100)?
         # We shift the min value to 0.0 for every sample.
         xyz -= xyz.min(axis=0)
@@ -414,7 +414,7 @@ if HAS_LIGHTNING:
             # Loss (progress bar)
             self.log(f'{prefix}_loss', loss, on_step=(prefix=='train'), on_epoch=True, prog_bar=True)
 
-            # Deck IoU (progress bar - this is your most important metric)
+            # Deck IoU (progress bar - this is most important metric)
             self.log(f'{prefix}_deck_iou', deck_iou, on_step=(prefix=='train'), on_epoch=True, prog_bar=True)
 
             # Detailed Metrics (logged but hidden from progress bar to keep it clean)
@@ -814,7 +814,7 @@ def main():
     parser.add_argument(
         '--batch-size',
         type=int,
-        default=4,
+        default=16,
         help='Batch size for testing loader (default: 4)'
     )
 
