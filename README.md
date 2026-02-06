@@ -1,6 +1,17 @@
 # USGS Lidar Bridge Classification
 
-A comprehensive pipeline for processing bridge lidar data organized by Hydrologic Unit Code (HUC) regions. This project downloads lidar point cloud data, applies weak supervision rules for labeling, normalizes coordinates, and prepares data for machine learning model training.
+A comprehensive pipeline for processing bridge lidar data organized by Hydrologic Unit Code (HUC) regions. This project downloads lidar point cloud data, applies weak supervision rules for labeling, normalizes coordinates, and prepares data for machine learning. It includes **model training** (sparse 3D U-Net) and **inference** for bridge point cloud classification; **scaling with AWS Batch** is planned for the future.
+
+## Table of Contents
+
+- [Project Overview](#project-overview)
+- [Pipeline Overview](#pipeline-overview)
+- [Installation](#installation)
+- [Troubleshooting](#troubleshooting)
+- [Data Download](#data-download)
+- [Classification Labels for Training](#classification-labels-for-training)
+- [Output Structure](#output-structure)
+- [Visualizing training metrics](#visualizing-training-metrics)
 
 ## Project Overview
 
@@ -11,6 +22,24 @@ This project provides tools for:
 - **Model Training**: Prepares normalized data for training sparse 3D U-Net models for bridge point cloud classification
 
 The pipeline processes bridge geometries from OpenStreetMap, finds intersecting lidar sources, applies ground filtering (SMRF), performs quality checks (RANSAC plane fitting, linearity validation), and generates labeled training data.
+
+## Pipeline Overview
+
+Data flows from OSM bridge geometries and USGS LiDAR sources through download and weak supervision, then normalization, train/val/test split, optional class-weight computation, and finally model training. The pipeline is designed to scale to hundreds of thousands of bridges; ensure sufficient disk space for silver_training and normalized outputs.
+
+```mermaid
+flowchart LR;
+  DataDownload[Download and Weak Supervision]
+  Preprocess[Preprocess and Normalize]
+  Split[Split Train/Val/Test]
+  CalculateWeights[Calculate Weights]
+  Train[Train Model]
+  DataDownload --> Preprocess;
+  Preprocess --> Split;
+  Split --> CalculateWeights;
+  CalculateWeights --> Train;
+  Split --> Train;
+```
 
 ## Installation
 
@@ -45,20 +74,20 @@ docker compose run --rm bridge-classifier python src/download-and-weak-supervise
 
 
 # Step 2: Preprocess & Normalization
-# --skip--existing skips already processed outputs.
+# --skip-existing skips already processed outputs.
 docker compose run --rm bridge-classifier python src/preprocess_bridges.py --input-dir ./data/ml-data/silver_training --output-dir ./data/ml-data/silver_training_normalized
 
 # Step 3: Split data (train/val/test)
 docker compose run --rm bridge-classifier python utils/split_data.py --laz-dir ./data/ml-data/silver_training --npy-dir ./data/ml-data/silver_training_normalized --output-dir ./data/ml-data --holdout-test-ids ./data/ml-data/holdout_test.txt --train-ratio 0.8 --val-ratio 0.2 --symlink
 
-# Optional: To compute class weights from the training set (e.g. for imbalanced loss), run the following after the split step.
+# Step 3a: Compute class weights (optional). Use output in training with --class-weights ./data/ml-data/class_weights.json
 docker compose run --rm bridge-classifier python utils/calculate_weights.py --data-dir ./data/ml-data/training --output ./data/ml-data/class_weights.json
 
-# Step 4: Train Model (Requires NVIDIA GPU)
+# Step 4: Train Model (Requires NVIDIA GPU). Pass class weights: add --class-weights ./data/ml-data/class_weights.json if you ran Step 3a.
 docker compose run --rm bridge-classifier python src/train.py --train --augment --val-dir='./data/ml-data/validation' --train-dir='./data/ml-data/training' --epochs 50 --batch-size 16 --exp-name bridge-base-v0
 ```
 
-Note: If you run into permission denied error, make sure proper permission is provided by running `chmod -R 777 <folder>`.
+See [Troubleshooting](#troubleshooting) for permission and other issues.
 
 **Development Mode**:
 
@@ -94,15 +123,7 @@ mamba activate bridge-classify
 python -c "import torch; print(f'CUDA Available: {torch.cuda.is_available()}')"
 ```
 
-**Troubleshooting**: If you encounter `libstdc++` errors (common on Linux) when running scripts:
-
-```bash
-# Try installing the system library
-mamba install -c conda-forge libstdcxx-ng
-
-# OR export the library path before running your script
-export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
-```
+See [Troubleshooting](#troubleshooting).
 
 #### Option 3: Manual Installation
 
@@ -131,8 +152,7 @@ pip install lightning tensorboard
 # Adjust CUDA version as needed (https://github.com/traveller59/spconv)
 pip install spconv-cu120
 
-# Pin NumPy to avoid the Floating point exception (core dumped) error
-# More info here: https://github.com/traveller59/spconv/issues/725
+# Pin NumPy to avoid the Floating point exception (core dumped) error ([spconv #725](https://github.com/traveller59/spconv/issues/725))
 mamba install numpy=1.26.4
 
 # Optional: for saving graph
@@ -147,11 +167,21 @@ mamba install numpy=1.26.4
 # export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
 ```
 
-### Data Download
+See [Troubleshooting](#troubleshooting) for libstdc++ and other issues.
+
+## Troubleshooting
+
+- **Permission denied**: When running the pipeline (e.g. writing to `data/`), ensure permissions: `chmod -R 777 <folder>`.
+- **libstdc++ / CXXABI_1.3.15**: Common on Linux. Try `mamba install -c conda-forge libstdcxx-ng`. If that fails, run before scripts: `export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH`.
+- **NumPy and spconv**: Pin NumPy to avoid "Floating point exception (core dumped)" ([spconv #725](https://github.com/traveller59/spconv/issues/725)): `mamba install numpy=1.26.4`.
+- **No JSON files / no class distribution**: If `calculate_weights.py` reports no files or no distribution, run the split step (Step 3) first and use `--data-dir ./data/ml-data/training`.
+
+## Data Download
 - Make a folder named `data/` in the same level as `src/`
 - Make a subfolder `usgs_entwine/` and `osm/hucs/` inside `data/` folder.
-- Download the usgs lidar resources as `wget https://raw.githubusercontent.com/hobuinc/usgs-lidar/refs/heads/master/boundaries/resources.geojson -O data/usgs_entwine/lidar_resources.geojson`
-- HUCS level osm data can be found at `s3://fimc-data/bridge-classification/osm/hucs/` (organized by huc_id folder level)
+- Download the [USGS lidar resources](https://raw.githubusercontent.com/hobuinc/usgs-lidar/refs/heads/master/boundaries/resources.geojson): `wget https://raw.githubusercontent.com/hobuinc/usgs-lidar/refs/heads/master/boundaries/resources.geojson -O data/usgs_entwine/lidar_resources.geojson`
+- HUC-level OSM data: `s3://fimc-data/bridge-classification/osm/hucs/` (organized by huc_id folder level)
+- The pipeline creates `data/ml-data/` and its subfolders when you run Steps 1–4; see [Output directory (data/ml-data)](#output-directory-dataml-data) for the full layout.
 
 Download and organize it to match this structure.
 
@@ -159,15 +189,17 @@ Download and organize it to match this structure.
 data/
 ├── usgs_entwine/
 │   └── lidar_resources.geojson
-└── osm/
-    └── hucs/
-        ├── 02050206/
-        │   └── osm_bridges_lidar_subset__02050206.gpkg
-        ├── 03070101/
-        │   └── osm_bridges_lidar_subset__03070101.gpkg
-        ├── 11010009/
-        │   └── osm_bridges_lidar_subset__11010009.gpkg
-        └── ... (other huc_id folders)
+├── osm/
+│   └── hucs/
+│       ├── 02050206/
+│       │   └── osm_bridges_lidar_subset__02050206.gpkg
+│       ├── 03070101/
+│       │   └── osm_bridges_lidar_subset__03070101.gpkg
+│       ├── 11010009/
+│       │   └── osm_bridges_lidar_subset__11010009.gpkg
+│       └── ... (other huc_id folders)
+└── ml-data/                 # Created by pipeline (Steps 1–4); see Output Structure
+    └── ...
 ```
 
 ## Classification Labels for Training
@@ -180,6 +212,26 @@ The pipeline uses the following classification scheme:
 - **3**: Obstacles (Cars, Light Poles, High Noise)
 
 ## Output Structure
+
+### Output directory (data/ml-data)
+
+The directory `data/ml-data/` is the default base for pipeline outputs: download (Step 1), preprocess (Step 2), split (Step 3), optional class weights (Step 3a), and training (Step 4).
+
+```text
+data/ml-data/
+├── source/                    # Step 1: raw LAZ per HUC
+├── silver_training/           # Step 1: weak-supervised LAZ per HUC
+├── silver_training_normalized/ # Step 2: .npy and .json per HUC
+├── training/                  # Step 3: train split (.npy, .json)
+├── validation/                # Step 3: validation split
+├── testing/                   # Step 3: test split (+ .laz if present)
+├── split_manifest.json        # Step 3: split manifest
+├── split_train_ids.txt        # Step 3: train IDs
+├── split_val_ids.txt          # Step 3: validation IDs
+├── split_test_ids.txt         # Step 3: test IDs
+├── class_weights.json         # Step 3a (optional): from calculate_weights
+└── holdout_test.txt           # Optional: fixed test IDs for split_data
+```
 
 ### File Naming Conventions
 
@@ -220,7 +272,7 @@ The normalization script generates JSON metadata files with the following struct
 }
 ```
 
-### Visualizing training metrics
+## Visualizing training metrics
 
 Training (Step 4) writes metrics via Lightning CSVLogger to `./experiments/<exp_name>/version_<N>/metrics.csv`. The script `utils/visualize_metrics.py` plots loss and deck/overall accuracy curves and saves `training_curves.png` in the same directory.
 
