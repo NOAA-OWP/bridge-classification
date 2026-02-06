@@ -84,6 +84,8 @@ docker compose run --rm bridge-classifier python utils/split_data.py --laz-dir .
 docker compose run --rm bridge-classifier python utils/calculate_weights.py --data-dir ./data/ml-data/training --output ./data/ml-data/class_weights.json
 
 # Step 4: Train Model (Requires NVIDIA GPU). Pass class weights: add --class-weights ./data/ml-data/class_weights.json if you ran Step 3a.
+# if gpu has headroom: batch_size -> 32
+# num_workers: For 550K files, 4–8 can help; increase if CPU/disk are the bottleneck.
 docker compose run --rm bridge-classifier python src/train.py --train --augment --val-dir='./data/ml-data/validation' --train-dir='./data/ml-data/training' --epochs 50 --batch-size 16 --exp-name bridge-base-v0
 ```
 
