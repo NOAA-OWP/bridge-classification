@@ -8,6 +8,7 @@ checkpoints/
 .DS_Store
 *.pyc
 experiments/
+plan/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

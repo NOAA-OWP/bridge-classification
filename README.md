@@ -103,21 +103,26 @@ docker compose run --rm bridge-classifier python utils/calculate_weights.py --da
 # num_workers: For 550K files, 4–8 can help; increase if CPU/disk are the bottleneck.
 
 # used for g5.2xlarge ec2
+# change rules
+# --batch-size 4 --accumulate-grad-batches 4 → effective 16, ~half the steps per epoch.
+# --batch-size 8 --accumulate-grad-batches 2 → effective 16, ~quarter of the steps (if it doesn’t OOM).
+
 docker compose run --rm \
--e PYTORCH_ALLOC_CONF=expandable_segments:True \
+-e PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
 bridge-classifier python src/train.py \
   --train --augment \
   --val-dir='/data/ml-data/validation' \
   --train-dir='/data/ml-data/training' \
-  --epochs 12 \
+  --epochs 10 \
   --voxel-size 0.1 \
-  --batch-size 2 \
-  --accumulate-grad-batches 8 \
+  --batch-size 4 \
+  --accumulate-grad-batches 4 \
   --exp-name bridge-base-all-data-v0 \
   --class-weights /data/ml-data/class_weights.json \
   --num-workers 4 \
   --early-stopping \
-  --early-stopping-patience 10
+  --early-stopping-patience 6 \
+  --max-voxels 100000
 ```
 
 **Training options** (for `src/train.py`):
@@ -319,6 +324,18 @@ The normalization script generates JSON metadata files with the following struct
 ```
 
 ## Visualizing training metrics
+
+### Viewing TensorBoard while training is running
+
+You can run TensorBoard in a separate terminal (same Docker image) to watch metrics live. Use `-p 6006:6006` to map the container port to the host so you can open `http://localhost:6006` in the browser. Use `--bind_all` so TensorBoard listens on all interfaces (needed when running inside Docker).
+
+```bash
+docker compose run -p 6006:6006 --rm bridge-classifier tensorboard --logdir=experiments/bridge-base-all-data-v0/version_0/ --bind_all
+```
+
+The `--logdir` path should match your experiment name and version (e.g. `experiments/<exp_name>/version_<N>/`). If you use a different `--experiments-dir` when training, use that base path for `--logdir`. TensorBoard logs are written by Lightning's TensorBoardLogger to the same directory as the CSV metrics.
+
+### CSV metrics and static plots
 
 Training (Step 4) writes metrics via Lightning CSVLogger to `./experiments/<exp_name>/version_<N>/metrics.csv`. The script `utils/visualize_metrics.py` plots loss and deck/overall accuracy curves and saves `training_curves.png` in the same directory.
 
