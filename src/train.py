@@ -306,6 +306,8 @@ if HAS_LIGHTNING:
             learning_rate=0.001,
             weight_decay=0.01,
             class_weights=None,
+            monitor='val_loss',
+            monitor_mode='min',
         ):
             """
             Args:
@@ -315,9 +317,13 @@ if HAS_LIGHTNING:
                 learning_rate: Learning rate for optimizer (default: 0.001)
                 weight_decay: Weight decay for optimizer (default: 0.01)
                 class_weights: Class weights for loss function (default: None)
+                monitor: Metric name for ReduceLROnPlateau (default: val_loss)
+                monitor_mode: 'min' or 'max' for ReduceLROnPlateau (default: min)
             """
             super().__init__()
             self.save_hyperparameters()
+            self.monitor = monitor
+            self.monitor_mode = monitor_mode
 
             self.model = SparseUNet(
                 input_channels=input_channels,
@@ -442,9 +448,9 @@ if HAS_LIGHTNING:
             # Add ReduceLROnPlateau
             scheduler = {
                 'scheduler': optim.lr_scheduler.ReduceLROnPlateau(
-                    optimizer, mode='min', factor=0.5, patience=5, min_lr=1e-6
+                    optimizer, mode=self.monitor_mode, factor=0.5, patience=5, min_lr=1e-6
                 ),
-                'monitor': 'val_loss', # Required for ReduceLROnPlateau
+                'monitor': self.monitor,
                 'interval': 'epoch',
                 'frequency': 1
             }
@@ -891,7 +897,7 @@ def main():
         '--early-stopping',
         action='store_true',
         default=False,
-        help='Stop training when val_loss does not improve for --early-stopping-patience epochs (requires validation).',
+        help='Stop training when the monitored metric (see --monitor) does not improve for --early-stopping-patience epochs (requires validation).',
     )
 
     parser.add_argument(
@@ -899,6 +905,13 @@ def main():
         type=int,
         default=10,
         help='Number of epochs with no improvement after which to stop (used only if --early-stopping).',
+    )
+
+    parser.add_argument(
+        '--monitor',
+        type=str,
+        default='val_deck_iou',
+        help='Metric to monitor for checkpointing and early stopping (default: val_deck_iou). Use val_deck_iou for best deck IoU, val_loss for validation loss. Ignored when no validation data (train_loss used).',
     )
 
     args = parser.parse_args()
@@ -933,6 +946,13 @@ def main():
             except json.JSONDecodeError as e:
                 raise SystemExit(f"Error: invalid JSON in --class-weights file: {cw_path}\n{e}") from e
 
+        has_validation = (
+            (val_dir and os.path.isdir(val_dir) and len(list(Path(val_dir).rglob("*.npy"))) > 0)
+            or args.val_split > 0
+        )
+        effective_monitor = args.monitor if has_validation else 'train_loss'
+        monitor_mode = 'max' if 'iou' in effective_monitor.lower() else 'min'
+
         if val_dir is None or (not os.path.isdir(val_dir)):
             if args.val_split > 0:
                 print("Note: --val-dir not provided; validation will use --val-split on training data.")
@@ -963,7 +983,7 @@ def main():
         )
         print(f"Experiment name: {args.exp_name}")
         if args.early_stopping:
-            print(f"Early stopping: patience={args.early_stopping_patience} (val_loss).")
+            print(f"Early stopping: patience={args.early_stopping_patience} ({effective_monitor}).")
         print("=" * 60)
 
         # Create data module
@@ -985,6 +1005,8 @@ def main():
             learning_rate=args.learning_rate,
             weight_decay=args.weight_decay,
             class_weights=class_weights_list,
+            monitor=effective_monitor,
+            monitor_mode=monitor_mode,
         )
 
         # Logger: TensorBoard
@@ -1012,16 +1034,12 @@ def main():
                 json.dump({"weights": weights_used, "source": "built-in default"}, f, indent=2)
 
         # Setup checkpoint callback (use train_loss when no validation data)
-        has_validation = (
-            (val_dir and os.path.isdir(val_dir) and len(list(Path(val_dir).rglob("*.npy"))) > 0)
-            or args.val_split > 0
-        )
         if has_validation:
             checkpoint_callback = ModelCheckpoint(
-                filename='bridge-unet-{epoch:02d}-{val_loss:.4f}',
-                monitor='val_loss',
+                filename=f'bridge-unet-{{epoch:02d}}-{{{effective_monitor}:.4f}}',
+                monitor=effective_monitor,
                 save_top_k=5,
-                mode='min',
+                mode=monitor_mode,
                 save_last=True
             )
         else:
@@ -1037,8 +1055,8 @@ def main():
         if args.early_stopping and has_validation:
             callbacks.append(
                 EarlyStopping(
-                    monitor='val_loss',
-                    mode='min',
+                    monitor=effective_monitor,
+                    mode=monitor_mode,
                     patience=args.early_stopping_patience,
                     verbose=True,
                 )

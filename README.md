@@ -89,6 +89,19 @@ docker compose run --rm bridge-classifier python utils/calculate_weights.py --da
 docker compose run --rm bridge-classifier python src/train.py --train --augment --val-dir='./data/ml-data/validation' --train-dir='./data/ml-data/training' --epochs 50 --batch-size 16 --exp-name bridge-base-v0
 ```
 
+**Training options** (for `src/train.py`):
+
+- **`--monitor`**: Metric used for best-model checkpointing and early stopping (default: `val_deck_iou`). Use `val_deck_iou` to optimize for deck IoU, or `val_loss` for validation loss. When no validation data is used, `train_loss` is used instead.
+- **`--early-stopping`**: Stop training when the monitored metric does not improve.
+- **`--early-stopping-patience`**: Number of epochs to wait with no improvement before stopping (default: 10). Used only when `--early-stopping` is set.
+
+Example: train with early stopping on deck IoU (default), or on validation loss for comparison:
+
+```bash
+python src/train.py --train --augment --val-dir=./data/ml-data/validation --epochs 50 --early-stopping --early-stopping-patience 10
+python src/train.py --train --augment --val-dir=./data/ml-data/validation --epochs 50 --monitor val_loss --early-stopping --early-stopping-patience 10
+```
+
 See [Troubleshooting](#troubleshooting) for permission and other issues.
 
 **Development Mode**:
