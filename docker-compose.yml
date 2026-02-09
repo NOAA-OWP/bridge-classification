@@ -6,8 +6,8 @@ services:
     image: bridge-classifier
     working_dir: /app
     volumes:
-      # Mount local directory
-      - .:/app
+      - .:/app # Mount code
+      - ${DATA_DIR}:${DATA_DIR} # Mount data from .env
     deploy:
       resources:
         reservations:

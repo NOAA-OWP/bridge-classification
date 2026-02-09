@@ -65,6 +65,20 @@ docker compose build
 docker build --platform linux/amd64 -t bridge-classifier .
 ```
 
+**Before running with Docker:**
+
+- **Environment file:** Copy `.env.example` to `.env` and edit if needed. `DATA_DIR` is used by docker-compose to mount the ML data directory (e.g. `/data/ml-data` or an absolute path on the host).
+
+  ```bash
+  cp .env.example .env
+  ```
+
+- **Experiments directory (before training):** Create the experiments directory at repo root and make it writable so the container can write logs and checkpoints (default `./experiments`). Required when using Docker; without it, Step 4 (Train Model) may fail with a permission error.
+
+  ```bash
+  mkdir -p experiments && chmod 777 experiments
+  ```
+
 **Run the Pipeline**:
 
 ```bash
@@ -83,10 +97,25 @@ docker compose run --rm bridge-classifier python utils/split_data.py --laz-dir .
 # Step 3a: Compute class weights (optional). Use output in training with --class-weights ./data/ml-data/class_weights.json
 docker compose run --rm bridge-classifier python utils/calculate_weights.py --data-dir ./data/ml-data/training --output ./data/ml-data/class_weights.json
 
-# Step 4: Train Model (Requires NVIDIA GPU). Pass class weights: add --class-weights ./data/ml-data/class_weights.json if you ran Step 3a.
+# Step 4: Train Model (Requires NVIDIA GPU). Ensure the experiments directory exists and is writable (see setup above).
+# Pass class weights: add --class-weights ./data/ml-data/class_weights.json if you ran Step 3a.
 # if gpu has headroom: batch_size -> 32
 # num_workers: For 550K files, 4–8 can help; increase if CPU/disk are the bottleneck.
-docker compose run --rm bridge-classifier python src/train.py --train --augment --val-dir='./data/ml-data/validation' --train-dir='./data/ml-data/training' --epochs 50 --batch-size 16 --exp-name bridge-base-v0
+
+# used for g5.2xlarge ec2
+docker compose run --rm \
+-e PYTORCH_ALLOC_CONF=expandable_segments:True \
+bridge-classifier python src/train.py \
+  --train --augment \
+  --val-dir='/data/ml-data/validation' \
+  --train-dir='/data/ml-data/training' \
+  --epochs 25 \
+  --batch-size 8 \
+  --exp-name bridge-base-all-data-v0 \
+  --class-weights /data/ml-data/class_weights.json \
+  --num-workers 6 \
+  --early-stopping \
+  --early-stopping-patience 10
 ```
 
 **Training options** (for `src/train.py`):
@@ -186,7 +215,7 @@ See [Troubleshooting](#troubleshooting) for libstdc++ and other issues.
 
 ## Troubleshooting
 
-- **Permission denied**: When running the pipeline (e.g. writing to `data/`), ensure permissions: `chmod -R 777 <folder>`.
+- **Permission denied**: When running the pipeline (e.g. writing to `data/`), ensure permissions: `chmod -R 777 <folder>`. If training fails with permission errors on the experiments directory, ensure `experiments` exists and is writable: `mkdir -p experiments && chmod 777 experiments`.
 - **libstdc++ / CXXABI_1.3.15**: Common on Linux. Try `mamba install -c conda-forge libstdcxx-ng`. If that fails, run before scripts: `export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH`.
 - **NumPy and spconv**: Pin NumPy to avoid "Floating point exception (core dumped)" ([spconv #725](https://github.com/traveller59/spconv/issues/725)): `mamba install numpy=1.26.4`.
 - **No JSON files / no class distribution**: If `calculate_weights.py` reports no files or no distribution, run the split step (Step 3) first and use `--data-dir ./data/ml-data/training`.

@@ -880,6 +880,13 @@ def main():
     )
 
     parser.add_argument(
+        '--experiments-dir',
+        type=str,
+        default='./experiments',
+        help='Base directory for experiment logs and checkpoints (default: ./experiments)'
+    )
+
+    parser.add_argument(
         '--class-weights',
         type=str,
         default=None,
@@ -1011,13 +1018,13 @@ def main():
 
         # Logger: TensorBoard
         tensorboard_logger = TensorBoardLogger(
-            save_dir="./experiments",
+            save_dir=args.experiments_dir,
             name=args.exp_name,
             default_hp_metric=False,
         )
 
         csv_logger = CSVLogger(
-            save_dir="./experiments",
+            save_dir=args.experiments_dir,
             name=args.exp_name,
             version=tensorboard_logger.version,
         )
@@ -1086,6 +1093,7 @@ def main():
             logger=[tensorboard_logger, csv_logger],
             callbacks=callbacks,
             log_every_n_steps=10,
+            precision="16-mixed",  # or "bf16-mixed"
         )
 
         if HAS_TORCHVIEW:
@@ -1097,7 +1105,7 @@ def main():
         print("\n" + "=" * 60)
         print("Training complete!")
         print("=" * 60)
-        print(f"Checkpoints saved to: ./experiments/{args.exp_name}")
+        print(f"Checkpoints saved to: {Path(args.experiments_dir) / args.exp_name}")
         return
 
     # Directory for test loader and visualize: use --train-dir (default training data)
