@@ -109,11 +109,13 @@ bridge-classifier python src/train.py \
   --train --augment \
   --val-dir='/data/ml-data/validation' \
   --train-dir='/data/ml-data/training' \
-  --epochs 25 \
-  --batch-size 8 \
+  --epochs 12 \
+  --voxel-size 0.1 \
+  --batch-size 2 \
+  --accumulate-grad-batches 8 \
   --exp-name bridge-base-all-data-v0 \
   --class-weights /data/ml-data/class_weights.json \
-  --num-workers 6 \
+  --num-workers 4 \
   --early-stopping \
   --early-stopping-patience 10
 ```

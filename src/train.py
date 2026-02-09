@@ -921,6 +921,13 @@ def main():
         help='Metric to monitor for checkpointing and early stopping (default: val_deck_iou). Use val_deck_iou for best deck IoU, val_loss for validation loss. Ignored when no validation data (train_loss used).',
     )
 
+    parser.add_argument(
+        '--accumulate-grad-batches',
+        type=int,
+        default=1,
+        help='Number of batches to accumulate gradients before an optimizer step (PyTorch Lightning Trainer option). Use with smaller batch size to keep effective batch size (e.g. batch_size=4 and accumulate_grad_batches=4 -> effective batch 16). Default: 1 (no accumulation).',
+    )
+
     args = parser.parse_args()
     print(f"Using args: {args}")
 
@@ -991,6 +998,8 @@ def main():
         print(f"Experiment name: {args.exp_name}")
         if args.early_stopping:
             print(f"Early stopping: patience={args.early_stopping_patience} ({effective_monitor}).")
+        if args.accumulate_grad_batches > 1:
+            print(f"Accumulate grad batches: {args.accumulate_grad_batches}")
         print("=" * 60)
 
         # Create data module
@@ -1094,6 +1103,7 @@ def main():
             callbacks=callbacks,
             log_every_n_steps=10,
             precision="16-mixed",  # or "bf16-mixed"
+            accumulate_grad_batches=args.accumulate_grad_batches,
         )
 
         if HAS_TORCHVIEW:
