@@ -28,8 +28,10 @@ Usage:
 """
 
 import os
+import sys
 import json
 import shutil
+import shlex
 import argparse
 from pathlib import Path
 from typing import Dict, Tuple, List, Optional
@@ -1121,6 +1123,12 @@ def main():
             weights_used = model.class_weights.cpu().tolist()
             with open(class_weights_dest, "w") as f:
                 json.dump({"weights": weights_used, "source": "built-in default"}, f, indent=2)
+
+        # Save full run config and command line for reproducibility
+        with open(log_dir / "train_config.json", "w") as f:
+            json.dump(vars(args), f, indent=2)
+        with open(log_dir / "run_command.txt", "w") as f:
+            f.write(sys.executable + " " + " ".join(shlex.quote(a) for a in sys.argv) + "\n")
 
         # Setup checkpoint callback (use train_loss when no validation data)
         if has_validation:
