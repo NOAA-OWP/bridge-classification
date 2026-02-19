@@ -35,7 +35,6 @@ import shlex
 import argparse
 from pathlib import Path
 from typing import Dict, Tuple, List, Optional
-from collections import Counter
 
 import numpy as np
 
@@ -98,15 +97,15 @@ CLASS_NAMES = {
 def aggregate_voxel_points(xyz: np.ndarray, features: np.ndarray, labels: np.ndarray,
                           voxel_coords: np.ndarray, voxel_size: float) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
-    Aggregate points within each voxel.
+    Aggregate points within each voxel using vectorized numpy operations.
 
     For each voxel:
-    - Features: Average intensity across all points
-    - Coordinates: Use voxel center (discrete_coords * voxel_size + voxel_size/2)
+    - Features: Average intensity across all points in the voxel
+    - Coordinates: Voxel center (discrete_coords * voxel_size + voxel_size/2)
     - Labels: Majority vote (most common label in voxel)
 
     Args:
-        xyz: Original point coordinates (N, 3)
+        xyz: Original point coordinates (N, 3) [unused, kept for API compatibility]
         features: Point features (N, 1) - intensity
         labels: Point labels (N,)
         voxel_coords: Discrete voxel coordinates (N, 3)
@@ -115,47 +114,30 @@ def aggregate_voxel_points(xyz: np.ndarray, features: np.ndarray, labels: np.nda
     Returns:
         Tuple of (aggregated_xyz, aggregated_features, aggregated_labels)
     """
-    # Convert voxel_coords to tuple for grouping
-    voxel_keys = [tuple(vc) for vc in voxel_coords]
+    # Find unique voxels and map each point to its voxel index (vectorized, no Python loops)
+    unique_voxels, inverse_indices = np.unique(voxel_coords, axis=0, return_inverse=True)
+    n_voxels = len(unique_voxels)
 
-    # Group points by voxel
-    voxel_groups = {}
-    for i, key in enumerate(voxel_keys):
-        if key not in voxel_groups:
-            voxel_groups[key] = []
-        voxel_groups[key].append(i)
+    # Mean intensity per voxel using bincount (O(N) numpy, ~100x faster than Python dict loop)
+    counts = np.bincount(inverse_indices, minlength=n_voxels).astype(np.float64)
+    agg_feats = np.bincount(
+        inverse_indices, weights=features[:, 0].astype(np.float64), minlength=n_voxels
+    ) / counts
+    aggregated_features = agg_feats[:, np.newaxis].astype(np.float32)
 
-    # Aggregate each voxel
-    aggregated_xyz = []
-    aggregated_features = []
-    aggregated_labels = []
+    # Majority vote: loop over 4 known classes only (not over every point)
+    n_classes = max(4, int(labels.max()) + 1)
+    label_votes = np.zeros((n_voxels, n_classes), dtype=np.int32)
+    for c in range(n_classes):
+        mask = labels == c
+        if mask.any():
+            label_votes[:, c] = np.bincount(inverse_indices[mask], minlength=n_voxels)
+    aggregated_labels = label_votes.argmax(axis=1).astype(np.int64)
 
-    for voxel_key, point_indices in voxel_groups.items():
-        # Get points in this voxel
-        voxel_points = xyz[point_indices]
-        voxel_features = features[point_indices]
-        voxel_labels = labels[point_indices]
+    # Voxel centers from quantized coordinates
+    aggregated_xyz = unique_voxels.astype(np.float32) * voxel_size + voxel_size / 2.0
 
-        # Average features (intensity)
-        avg_feature = np.mean(voxel_features, axis=0)
-
-        # Majority vote for label
-        label_counts = Counter(voxel_labels)
-        majority_label = label_counts.most_common(1)[0][0]
-
-        # Use voxel center as coordinate
-        # Convert discrete voxel coords back to continuous space
-        voxel_center = np.array(voxel_key) * voxel_size + voxel_size / 2.0
-
-        aggregated_xyz.append(voxel_center)
-        aggregated_features.append(avg_feature)
-        aggregated_labels.append(majority_label)
-
-    return (
-        np.array(aggregated_xyz, dtype=np.float32),
-        np.array(aggregated_features, dtype=np.float32),
-        np.array(aggregated_labels, dtype=np.int64)
-    )
+    return aggregated_xyz, aggregated_features, aggregated_labels
 
 
 class BridgeDataset(Dataset):

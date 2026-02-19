@@ -123,6 +123,30 @@ bridge-classifier python src/train.py \
   --early-stopping \
   --early-stopping-patience 6 \
   --max-voxels 100000
+
+
+# used for g5.4xlarge ec2
+# change rules
+# --batch-size 4 --accumulate-grad-batches 4 → effective 16, ~half the steps per epoch.
+# --batch-size 8 --accumulate-grad-batches 2 → effective 16, ~quarter of the steps (if it doesn’t OOM).
+
+docker compose run --rm \
+-e PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
+bridge-classifier python src/train.py \
+  --train --augment \
+  --val-dir='/data/ml-data/validation' \
+  --train-dir='/data/ml-data/training' \
+  --epochs 25 \
+  --ckpt-path /app/experiments/bridge-base-all-data-v0/version_0/checkpoints/last.ckpt \
+  --voxel-size 0.1 \
+  --batch-size 16 \
+  --accumulate-grad-batches 1 \
+  --exp-name bridge-base-all-data-v0 \
+  --class-weights /data/ml-data/class_weights.json \
+  --num-workers 12 \
+  --early-stopping \
+  --early-stopping-patience 6 \
+  --max-voxels 100000
 ```
 
 
@@ -389,7 +413,7 @@ The `--logdir` path should match your experiment name and version (e.g. `experim
 
 ### CSV metrics and static plots
 
-Training (Step 4) writes metrics via Lightning CSVLogger to `./experiments/<exp_name>/version_<N>/metrics.csv`. The script `utils/visualize_metrics.py` plots loss and deck/overall accuracy curves and saves `training_curves.png` in the same directory.
+Training (Step 4) writes metrics via Lightning CSVLogger to `./experiments/<exp_name>/version_<N>/metrics.csv`. The script `utils/visualize_metrics.py` plots epoch-level train/validation curves (loss, deck IoU, precision, recall, overall accuracy) and saves `training_curves.png` in the same directory. Diagnostic metrics such as Num Voxels and Max Sample Voxels are excluded. In compare mode, plots use distinct colors for train vs validation and short labels suitable for presentation slides.
 
 **Examples:**
 
@@ -417,3 +441,23 @@ Training (Step 4) writes metrics via Lightning CSVLogger to `./experiments/<exp_
   ```bash
   docker compose run --rm bridge-classifier python utils/visualize_metrics.py
   ```
+
+**Compare mode**
+
+Use `--compare` with comma-separated experiment names (under `--root`) to plot multiple experiments on the same axes. Optionally set `--compare-versions` (e.g. `0,0,0`); if omitted, version 0 is used for all. Use `--out` to set the output path (default: `{root}/compare_training_curves.png`).
+
+  ```bash
+  python utils/visualize_metrics.py --root experiments_copy --compare bridge-base-all-data-v0,bridge-base-all-data-v1 --out experiments_copy/compare_v0_v1.png
+  ```
+
+**Merge-resumed (one continuous curve)**
+
+When comparing exactly two experiments, add `--merge-resumed` to merge them into one timeline (first run’s epochs, then second run’s later epochs) and plot a single train/val series with a short legend (e.g. "Train", "Val") and run info in the figure suptitle (e.g. "v0 → v1").
+
+  ```bash
+  python utils/visualize_metrics.py --root experiments_copy --compare bridge-base-all-data-v0,bridge-base-all-data-v1 --merge-resumed --out experiments_copy/merged_v0_v1.png
+  ```
+
+**Reference**
+
+For full CLI options: `python utils/visualize_metrics.py --help`
