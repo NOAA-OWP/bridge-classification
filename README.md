@@ -125,11 +125,36 @@ bridge-classifier python src/train.py \
   --max-voxels 100000
 ```
 
+**Resume training** (continue from a saved checkpoint to more epochs, e.g. 10 → 25): use `--ckpt-path` and a new `--exp-name` so the resumed run writes to a separate experiment directory. Checkpoints are saved under `experiments/<exp_name>/version_0/checkpoints/` (e.g. `last.ckpt`).
+
+```bash
+docker compose run --rm \
+  -e PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
+  bridge-classifier python src/train.py \
+  --train --augment \
+  --val-dir=/data/ml-data/validation \
+  --train-dir=/data/ml-data/training \
+  --epochs 25 \
+  --ckpt-path /app/experiments/bridge-base-all-data-v0/version_0/checkpoints/last.ckpt \
+  --exp-name bridge-base-all-data-v1 \
+  --voxel-size 0.1 \
+  --batch-size 4 \
+  --accumulate-grad-batches 4 \
+  --class-weights /data/ml-data/class_weights.json \
+  --num-workers 4 \
+  --early-stopping \
+  --early-stopping-patience 6 \
+  --max-voxels 100000
+```
+
+(Adjust `--ckpt-path` if your experiments dir is mounted elsewhere; e.g. if `experiments` is at `/app/experiments`, use `/app/experiments/bridge-base-all-data-v0/version_0/checkpoints/last.ckpt`.)
+
 **Training options** (for `src/train.py`):
 
 - **`--monitor`**: Metric used for best-model checkpointing and early stopping (default: `val_deck_iou`). Use `val_deck_iou` to optimize for deck IoU, or `val_loss` for validation loss. When no validation data is used, `train_loss` is used instead.
 - **`--early-stopping`**: Stop training when the monitored metric does not improve.
 - **`--early-stopping-patience`**: Number of epochs to wait with no improvement before stopping (default: 10). Used only when `--early-stopping` is set.
+- **`--ckpt-path`**: Path to a checkpoint to resume training (e.g. `.../checkpoints/last.ckpt`). Use a new `--exp-name` for the resumed run so logs and checkpoints go to a separate experiment directory; the original run is left unchanged.
 
 Example: train with early stopping on deck IoU (default), or on validation loss for comparison:
 
