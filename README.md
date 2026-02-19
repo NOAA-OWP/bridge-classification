@@ -125,6 +125,33 @@ bridge-classifier python src/train.py \
   --max-voxels 100000
 ```
 
+
+**Logging training output to a file:** For long runs, you can capture stdout/stderr so the experiment dir is self-contained. Create the experiment directory first (so the log file path exists), then use `tee` to write to a log file while still showing output in the terminal:
+
+```bash
+mkdir -p experiments/bridge-base-all-data-v1
+docker compose run --rm \
+  -e PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
+  bridge-classifier python src/train.py \
+  --train --augment \
+  --val-dir=/data/ml-data/validation \
+  --train-dir=/data/ml-data/training \
+  --epochs 25 \
+  --ckpt-path /app/experiments/bridge-base-all-data-v0/version_0/checkpoints/last.ckpt \
+  --exp-name bridge-base-all-data-v1 \
+  --voxel-size 0.1 \
+  --batch-size 4 \
+  --accumulate-grad-batches 4 \
+  --class-weights /data/ml-data/class_weights.json \
+  --num-workers 4 \
+  --early-stopping \
+  --early-stopping-patience 6 \
+  --max-voxels 100000 \
+  2>&1 | tee experiments/bridge-base-all-data-v1/training_console.log
+```
+
+Use the same `--exp-name` as in your train command so the log lives next to `version_0/` (e.g. `experiments/bridge-base-all-data-v1/training_console.log`). The directory must exist before the run because `tee` does not create parent directories.
+
 **Resume training** (continue from a saved checkpoint to more epochs, e.g. 10 → 25): use `--ckpt-path` and a new `--exp-name` so the resumed run writes to a separate experiment directory. Checkpoints are saved under `experiments/<exp_name>/version_0/checkpoints/` (e.g. `last.ckpt`).
 
 ```bash
