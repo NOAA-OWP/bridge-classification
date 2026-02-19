@@ -90,6 +90,10 @@ target/
 # Jupyter Notebook
 .ipynb_checkpoints
 
+# Notebooks: downloaded data and generated outputs
+notebooks/data/
+notebooks/outputs/
+
 # IPython
 profile_default/
 ipython_config.py

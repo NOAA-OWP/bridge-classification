@@ -11,6 +11,7 @@ A comprehensive pipeline for processing bridge lidar data organized by Hydrologi
 - [Data Download](#data-download)
 - [Classification Labels for Training](#classification-labels-for-training)
 - [Output Structure](#output-structure)
+- [Notebooks](#notebooks)
 - [Visualizing training metrics](#visualizing-training-metrics)
 
 ## Project Overview
@@ -359,6 +360,14 @@ data/ml-data/
 ├── class_weights.json         # Step 3a (optional): from calculate_weights
 └── holdout_test.txt           # Optional: fixed test IDs for split_data
 ```
+
+### Notebooks
+
+The **notebooks/** folder contains a reproducible Jupyter notebook for dataset statistics and a HUC8 distribution map:
+
+- **`notebooks/dataset_stats_and_huc8_map.ipynb`** — Downloads ml-data artifacts from S3 (split ID files, `class_weights.json`, optional `osm_bridge_counts.json`), computes unique HUCs in the split, train/val/test line counts, total points from class weights, and OSM bridge counts (when the counts file is on S3). It then downloads HUC8 boundaries from a public source (e.g. USGS WBD or HydroShare) and produces a map of which HUC8s appear in the dataset split.
+
+Run the notebook after configuring the S3 bucket/prefix (and optional AWS profile) in the first cell or via environment variables (`BRIDGE_S3_BUCKET`, `BRIDGE_S3_ML_PREFIX`, `AWS_PROFILE`). Set `HUC8_BOUNDARIES_URL` (or a local path) to enable the map; see the notebook for where to obtain WBD HUC8 data.
 
 ### File Naming Conventions
 
