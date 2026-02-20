@@ -316,6 +316,107 @@ class WeakSupervisionPipeline:
         return is_curved, max_deviation
 
     @staticmethod
+    def fit_ransac_from_arrays(arrays: np.ndarray, config: BridgeProcessingConfig) -> Dict[str, Any]:
+        """
+        Run RANSAC plane fitting on in-memory point arrays (e.g. from LAZ).
+        Used for visualization; does not run linearity or RMSE rejection.
+
+        Args:
+            arrays: Structured array with fields X, Y, Z, Classification (PDAL-style).
+            config: BridgeProcessingConfig instance.
+
+        Returns:
+            On success: dict with success=True, x_center, y_center, X_local, Y_local, Z,
+                coef_x, coef_y, intercept, inlier_mask_full, lateral_mask, dist_from_plane_all.
+            On failure: dict with success=False, error=str.
+        """
+        # Deterministic ordering (same as process_bridge)
+        sort_idx = np.lexsort((arrays['Z'], arrays['Y'], arrays['X']))
+        arrays = arrays[sort_idx]
+        rng = np.random.default_rng(seed=config.deterministic_ordering_seed)
+        shuffle_idx = rng.permutation(len(arrays))
+        arrays = arrays[shuffle_idx]
+
+        X = np.asarray(arrays['X'], dtype=np.float64)
+        Y = np.asarray(arrays['Y'], dtype=np.float64)
+        Z = np.asarray(arrays['Z'], dtype=np.float64)
+        Classes = np.asarray(arrays['Classification'], dtype=np.int32)
+
+        x_center = np.mean(X)
+        y_center = np.mean(Y)
+        X_local = X - x_center
+        Y_local = Y - y_center
+
+        fit_mask = ~np.isin(Classes, config.ignore_classes)
+        if np.sum(fit_mask) < config.min_points_for_ransac:
+            return {
+                'success': False,
+                'error': f'Not enough points for RANSAC ({np.sum(fit_mask)} < {config.min_points_for_ransac})',
+            }
+
+        X_fit = X_local[fit_mask]
+        Y_fit = Y_local[fit_mask]
+        Z_fit = Z[fit_mask]
+        xy_fit = np.stack([X_fit, Y_fit], axis=1)
+
+        if len(np.unique(xy_fit, axis=0)) < config.ransac_min_samples:
+            return {'success': False, 'error': 'Not enough unique points for RANSAC'}
+
+        try:
+            ransac = RANSACRegressor(
+                min_samples=config.ransac_min_samples,
+                residual_threshold=config.ransac_residual_threshold,
+                random_state=config.ransac_random_state,
+            )
+            ransac.fit(xy_fit, Z_fit)
+            inlier_mask = ransac.inlier_mask_
+        except Exception as e:
+            return {'success': False, 'error': f'RANSAC fitting failed: {e}'}
+
+        if np.sum(inlier_mask) < config.min_ransac_inliers:
+            return {
+                'success': False,
+                'error': f'Not enough RANSAC inliers ({np.sum(inlier_mask)} < {config.min_ransac_inliers})',
+            }
+
+        x_inliers = X_fit[inlier_mask]
+        y_inliers = Y_fit[inlier_mask]
+        xy_inliers = np.stack([x_inliers, y_inliers], axis=1)
+
+        try:
+            hull = ConvexHull(xy_inliers)
+            hull_vertices = xy_inliers[hull.vertices]
+            hull_path = MatplotlibPath(hull_vertices)
+        except Exception as e:
+            return {'success': False, 'error': f'Convex hull failed: {e}'}
+
+        xy_local_all = np.stack([X_local, Y_local], axis=1)
+        lateral_mask = hull_path.contains_points(xy_local_all)
+        predicted_z_all = ransac.predict(xy_local_all)
+        dist_from_plane_all = Z - predicted_z_all
+
+        inlier_mask_full = np.zeros(len(X), dtype=bool)
+        inlier_mask_full[fit_mask] = inlier_mask
+
+        coef_x, coef_y = ransac.estimator_.coef_
+        intercept = ransac.estimator_.intercept_
+
+        return {
+            'success': True,
+            'x_center': x_center,
+            'y_center': y_center,
+            'X_local': X_local,
+            'Y_local': Y_local,
+            'Z': Z,
+            'coef_x': coef_x,
+            'coef_y': coef_y,
+            'intercept': intercept,
+            'inlier_mask_full': inlier_mask_full,
+            'lateral_mask': lateral_mask,
+            'dist_from_plane_all': dist_from_plane_all,
+        }
+
+    @staticmethod
     def process_bridge(ept_url: str, bridge_geometry: Any, config: BridgeProcessingConfig, buffer_meters: Optional[float] = None) -> Optional[Dict[str, Any]]:
         """
         Process a single bridge with weak supervision rules.
