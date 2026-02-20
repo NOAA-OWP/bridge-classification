@@ -137,6 +137,8 @@ def plot_metrics_compare(
     metrics_paths_with_labels: list[tuple[Path, str]],
     output_path: Path,
     merge_resumed: bool = False,
+    annotate_best_metric: str | None = None,
+    show: bool = False,
 ) -> None:
     """
     Plot metrics from multiple experiments on the same axes for comparison.
@@ -146,6 +148,9 @@ def plot_metrics_compare(
         output_path: Where to save the figure.
         merge_resumed: If True and exactly two experiments, merge into one continuous
             timeline (first run's epochs then second run's later epochs) and plot as one series.
+        annotate_best_metric: If set (e.g. "val_deck_iou" or "deck_iou") and a single series
+            is plotted, annotate the best epoch for that validation metric on the corresponding subplot.
+        show: If True, display the figure (e.g. in a notebook) and do not close it; if False, close after saving.
     """
     if not metrics_paths_with_labels:
         print("No metrics paths provided for comparison.")
@@ -269,11 +274,39 @@ def plot_metrics_compare(
     if run_caption:
         fig.suptitle(run_caption, fontsize=PRESENTATION_FONT["suptitle"], y=1.02)
 
+    # Optional: annotate best epoch for a validation metric (single series only)
+    if is_single_series and annotate_best_metric:
+        epoch_df, _ = epoch_dfs_with_labels[0]
+        ax_idx = None
+        val_key = None
+        for i, (_, _, vk) in enumerate(metrics_to_plot):
+            if vk == annotate_best_metric or vk == f"val_{annotate_best_metric}":
+                ax_idx, val_key = i, vk
+                break
+        if ax_idx is not None and val_key is not None and val_key in epoch_df.columns:
+            ax = axes[ax_idx]
+            best_epoch = epoch_df[val_key].idxmax()
+            best_val = epoch_df.loc[best_epoch, val_key]
+            best_str = f"{best_val:.3f}" if "loss" in val_key.lower() else f"{best_val:.1f}%"
+            ax.annotate(
+                f"Best: {best_str}\n(epoch {int(best_epoch)})",
+                xy=(best_epoch, best_val),
+                xytext=(best_epoch - max(1, epoch_df.index.max() * 0.15), best_val - (ax.get_ylim()[1] - ax.get_ylim()[0]) * 0.12),
+                fontsize=11,
+                fontweight="bold",
+                color=VAL_COLOR,
+                arrowprops=dict(arrowstyle="->", color=VAL_COLOR, lw=1.5),
+                bbox=dict(boxstyle="round,pad=0.3", facecolor="white", edgecolor=VAL_COLOR, alpha=0.9),
+            )
+
     plt.tight_layout()
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    plt.savefig(output_path, dpi=300, bbox_inches="tight")
-    plt.close()
+    plt.savefig(output_path, dpi=1000, bbox_inches="tight")
+    if show:
+        plt.show()
+    else:
+        plt.close()
     print(f"Comparison curves saved to: {output_path}")
 
 
@@ -324,6 +357,12 @@ def main():
         default=None,
         help="Output path for the comparison figure when using --compare. Default: {root}/compare_training_curves.png",
     )
+    parser.add_argument(
+        "--annotate-best",
+        type=str,
+        default=None,
+        help="Validation metric to annotate with best epoch (e.g. val_deck_iou or deck_iou). Only used with --compare and --merge-resumed.",
+    )
 
     args = parser.parse_args()
 
@@ -358,7 +397,10 @@ def main():
             output_path = Path(args.out) if args.out else root / "compare_training_curves.png"
             print(f"Comparing {len(metrics_paths_with_labels)} experiments.")
             plot_metrics_compare(
-                metrics_paths_with_labels, output_path, merge_resumed=args.merge_resumed
+                metrics_paths_with_labels,
+                output_path,
+                merge_resumed=args.merge_resumed,
+                annotate_best_metric=args.annotate_best,
             )
         elif args.csv is not None:
             csv_path = Path(args.csv)
