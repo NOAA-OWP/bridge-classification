@@ -1,0 +1,40 @@
+site_name: Bridge Classification
+site_description: USGS LiDAR Bridge Point Cloud Classification Pipeline
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.highlight
+    - content.code.copy
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+
+nav:
+  - Home: index.md
+  - Architecture: architecture.md
+  - Data Pipeline: data-pipeline.md
+  - AWS Batch Inference: aws-batch-inference.md
+  - Module Reference: module-reference.md
+  - Design Decisions: decisions.md
+
+markdown_extensions:
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - admonition
+  - pymdownx.details
+  - toc:
+      permalink: true

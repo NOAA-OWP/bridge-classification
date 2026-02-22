@@ -90,16 +90,15 @@ class SparseUNet(nn.Module):
     - Output: Per-voxel classification into num_classes
     """
 
-    def __init__(self, input_channels=1, num_classes=5, base_channels=16):
+    def __init__(self, input_channels=1, num_classes=4, base_channels=16):
         """
         Args:
             input_channels: Number of input features (default: 1 for intensity)
-            num_classes: Number of output classes
+            num_classes: Number of output classes (default: 4)
                 - 0: Background/Unclassified
-                - 1: Ground
-                - 2: Water
-                - 3: Bridge Deck
-                - 4: Obstacles/High Noise
+                - 1: Ground/Water
+                - 2: Bridge Deck
+                - 3: Obstacles/High Noise
             base_channels: Base number of channels (default: 16)
         """
         super().__init__()

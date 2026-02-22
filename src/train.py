@@ -309,7 +309,7 @@ if HAS_LIGHTNING:
             """
             Args:
                 input_channels: Number of input features (default: 1)
-                num_classes: Number of output classes (default: 5)
+                num_classes: Number of output classes (default: 4)
                 base_channels: Base number of channels (default: 16)
                 learning_rate: Learning rate for optimizer (default: 0.001)
                 weight_decay: Weight decay for optimizer (default: 0.01)
@@ -860,7 +860,7 @@ def main():
         '--batch-size',
         type=int,
         default=16,
-        help='Batch size for testing loader (default: 4)'
+        help='Batch size for testing loader (default: 16)'
     )
 
     parser.add_argument(

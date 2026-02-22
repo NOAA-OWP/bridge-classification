@@ -1,9 +1,10 @@
 # USGS Lidar Bridge Classification
 
-A comprehensive pipeline for processing bridge lidar data organized by Hydrologic Unit Code (HUC) regions. This project downloads lidar point cloud data, applies weak supervision rules for labeling, normalizes coordinates, and prepares data for machine learning. It includes **model training** (sparse 3D U-Net) and **inference** for bridge point cloud classification; **scaling with AWS Batch** is planned for the future.
+A comprehensive pipeline for processing bridge lidar data organized by Hydrologic Unit Code (HUC) regions. This project downloads lidar point cloud data, applies weak supervision rules for labeling, normalizes coordinates, and prepares data for machine learning. It includes **model training** (sparse 3D U-Net) and **inference** for bridge point cloud classification; **scaling with AWS Batch** for parallel inference is [supported](docs/aws-batch-inference.md).
 
 ## Table of Contents
 
+- [Documentation](#documentation)
 - [Project Overview](#project-overview)
 - [Pipeline Overview](#pipeline-overview)
 - [Installation](#installation)
@@ -13,6 +14,33 @@ A comprehensive pipeline for processing bridge lidar data organized by Hydrologi
 - [Output Structure](#output-structure)
 - [Notebooks](#notebooks)
 - [Visualizing training metrics](#visualizing-training-metrics)
+
+## Documentation
+
+For detailed design documentation, see the `docs/` directory (or build the docs site with MkDocs):
+
+- **[Architecture](docs/architecture.md)** — System design, classification schema, algorithm details. Supersedes the original implementation plan (`pp/original_implementation_plan.pdf`).
+- **[Data Pipeline](docs/data-pipeline.md)** — Step-by-step data flow walkthrough with data shapes at each stage.
+- **[AWS Batch Inference](docs/aws-batch-inference.md)** — Guide for scaling inference with AWS Batch array jobs.
+- **[Module Reference](docs/module-reference.md)** — Summary of every module's public API and CLI arguments.
+- **[Design Decisions](docs/decisions.md)** — Rationale for key architectural choices.
+
+### Building the docs locally
+
+The docs are readable as plain Markdown on GitHub. To build a searchable site with navigation and Mermaid diagrams:
+
+```bash
+pip install -r requirements-docs.txt
+mkdocs serve
+```
+
+Open <http://localhost:8000> to preview. Changes to `docs/` are hot-reloaded.
+
+### Deploying to GitHub Pages
+
+```bash
+mkdocs gh-deploy
+```
 
 ## Project Overview
 
