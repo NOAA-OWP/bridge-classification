@@ -1,6 +1,5 @@
 site_name: Bridge Classification
 site_description: USGS LiDAR Bridge Point Cloud Classification Pipeline
-site_url: https://ngwpc.github.io/bridge-classification/
 
 theme:
   name: material
