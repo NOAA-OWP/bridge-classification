@@ -10,6 +10,13 @@ checkpoints/
 experiments/
 plan/
 
+# Terraform
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/.terraform.lock.hcl
+terraform/terraform.tfvars
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

@@ -21,7 +21,7 @@ For detailed design documentation, see the `docs/` directory (or build the docs 
 
 - **[Architecture](docs/architecture.md)** — System design, classification schema, algorithm details.
 - **[Data Pipeline](docs/data-pipeline.md)** — Step-by-step data flow walkthrough with data shapes at each stage.
-- **[AWS Batch Inference](docs/aws-batch-inference.md)** — Guide for scaling inference with AWS Batch array jobs.
+- **[AWS Batch Inference](docs/aws-batch-inference.md)** — Terraform infrastructure, job submission scripts, chunking logic, and configuration reference for scaling inference with AWS Batch array jobs.
 - **[Module Reference](docs/module-reference.md)** — Summary of every module's public API and CLI arguments.
 - **[Design Decisions](docs/decisions.md)** — Rationale for key architectural choices.
 

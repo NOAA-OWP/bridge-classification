@@ -1,22 +1,34 @@
 """
 Bridge Classification Inference Script
 
-Loads a trained Sparse U-Net model, processes a raw LAS/LAZ file,
-and outputs a classified LAS/LAZ file with ASPRS standard codes.
+Loads a trained Sparse U-Net model, processes raw LAS/LAZ file(s),
+and outputs classified LAS/LAZ file(s) with ASPRS standard codes.
 
 Workflow:
-1. Load LAS file.
-2. Voxelize points (keep track of which point belongs to which voxel).
-3. Run Model Inference.
-4. Map Voxel Labels -> Original Points.
-5. Save LAS file.
+1. Load Model (once).
+2. For each input file:
+   a. Load LAS file.
+   b. Voxelize points (keep track of which point belongs to which voxel).
+   c. Run Model Inference.
+   d. Map Voxel Labels -> Original Points.
+   e. Save LAS file.
 
-Usage:
+Usage (single file):
     python src/inference.py \
         --input ./data/ml-data/testing/02050206/bridge_10598181_....laz \
         --output ./data/ml-data/prediction.laz \
         --model ./experiments/bridge-base-v0/.../checkpoints/....ckpt \
         --gpu
+
+Usage (batch via pairs file):
+    python src/inference.py \
+        --pairs-file ./pairs.tsv \
+        --model ./experiments/bridge-base-v0/.../checkpoints/....ckpt \
+        --gpu
+
+    Where pairs.tsv has one tab-separated line per file:
+        /path/to/input1.laz\t/path/to/output1.laz
+        /path/to/input2.laz\t/path/to/output2.laz
 """
 
 import argparse
@@ -97,26 +109,25 @@ def save_las(output_path, original_arrays, labels, metadata):
     pipeline = pdal.Pipeline(pipeline_json, arrays=[original_arrays])
     pipeline.execute()
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--input', type=str, required=True, help='Input LAS/LAZ file')
-    parser.add_argument('--output', type=str, required=True, help='Output LAS/LAZ file')
-    parser.add_argument('--model', type=str, required=True, help='Path to .pth/.ckpt checkpoint')
-    parser.add_argument('--voxel-size', type=float, default=0.05, help='Voxel size (must match training)')
-    parser.add_argument('--gpu', action='store_true', help='Force use of GPU')
-    args = parser.parse_args()
 
-    # Device handling
-    use_cuda = args.gpu and torch.cuda.is_available()
-    device = torch.device("cuda" if use_cuda else "cpu")
-    print(f"Using device: {device}")
+def load_model(checkpoint_path, device):
+    """Load a trained SparseUNet model from a checkpoint file.
 
-    # 1. LOAD MODEL
-    print(f"Loading model from {args.model}...")
+    Handles both Lightning checkpoints (strips 'model.' prefix from keys)
+    and raw state dict checkpoints.
+
+    Args:
+        checkpoint_path: Path to .ckpt or .pth checkpoint file.
+        device: Target torch device (cuda or cpu).
+
+    Returns:
+        SparseUNet model in eval mode on the specified device.
+    """
+    print(f"Loading model from {checkpoint_path}...")
     model = SparseUNet(input_channels=1, num_classes=4, base_channels=16)
 
     # Load weights
-    checkpoint = torch.load(args.model, map_location=device)
+    checkpoint = torch.load(checkpoint_path, map_location=device)
 
     # Handle Lightning Checkpoint vs Raw State Dict
     # Filter Lightning keys (remove 'class_weights', 'criterion', etc.)
@@ -134,92 +145,186 @@ def main():
 
     model.to(device)
     model.eval()
+    return model
 
-    # 2. LOAD DATA
-    print(f"Loading data: {args.input}")
+
+def run_inference(model, input_path, output_path, voxel_size=0.05, device=torch.device("cpu")):
+    """Run inference on a single LAS/LAZ file and save the classified result.
+
+    Args:
+        model: Pre-loaded SparseUNet model (already on device, in eval mode).
+        input_path: Path to input LAS/LAZ file.
+        output_path: Path to write classified LAS/LAZ file.
+        voxel_size: Voxel size in meters (must match training). Default: 0.05.
+        device: Device the model is on. Default: cpu.
+
+    Returns:
+        True if inference succeeded, False if the file was skipped or failed.
+    """
     try:
-        raw_xyz, raw_intensity, meta, original_arrays = load_las(args.input)
-    except RuntimeError as e:
-        print(f"Failed to load LAS: {e}")
-        return
+        # 1. LOAD DATA
+        print(f"Loading data: {input_path}")
+        raw_xyz, raw_intensity, meta, original_arrays = load_las(input_path)
 
-    if len(raw_xyz) < 100:
-        print("File empty or too small. Skipping.")
-        return
+        if len(raw_xyz) < 100:
+            print(f"WARN: {input_path} has < 100 points, skipping.")
+            return False
 
-    # 3. PREPROCESS (Normalize & Voxelize)
-    # --- NORMALIZATION ON THE FLY ---
-    # Shift to local coordinates (min=0) to match training distribution
-    xyz_min = raw_xyz.min(axis=0)
-    xyz_centered = raw_xyz - xyz_min
+        # 2. PREPROCESS (Normalize & Voxelize)
+        # Shift to local coordinates (min=0) to match training distribution
+        xyz_min = raw_xyz.min(axis=0)
+        xyz_centered = raw_xyz - xyz_min
 
-    # Calculate stats
-    # x_mean = raw_xyz[:, 0].mean()
-    # y_mean = raw_xyz[:, 1].mean()
-    # z_min = raw_xyz[:, 2].min()
+        # Quantize
+        discrete_coords = np.floor(xyz_centered / voxel_size).astype(np.int32)
 
-    # # Apply shifts
-    # xyz_centered = raw_xyz.copy()
-    # xyz_centered[:, 0] -= x_mean
-    # xyz_centered[:, 1] -= y_mean
-    # xyz_centered[:, 2] -= z_min
+        # Unique Voxel Logic
+        # unique_coords: The voxels fed to the network (M, 3)
+        # unique_inverse_indices: Mapping from Original Points (N) -> Voxel Index (M)
+        unique_coords, unique_inverse_indices = np.unique(discrete_coords, axis=0, return_inverse=True)
 
-    # Quantize
-    discrete_coords = np.floor(xyz_centered / args.voxel_size).astype(np.int32)
+        # Feature Aggregation (Mean Intensity per Voxel)
+        print("Aggregating features...")
+        flat_intensity = raw_intensity.ravel()
 
-    # Unique Voxel Logic
-    # unique_coords: The voxels fed to the network (M, 3)
-    # unique_inverse_indices: Mapping from Original Points (N) -> Voxel Index (M)
-    unique_coords, unique_inverse_indices = np.unique(discrete_coords, axis=0, return_inverse=True)
+        # Sum of intensity per voxel index
+        sum_features = np.bincount(unique_inverse_indices, weights=flat_intensity)
+        count_features = np.bincount(unique_inverse_indices)
 
-    # Feature Aggregation (Mean Intensity per Voxel)
-    print("Aggregating features...")
-    flat_intensity = raw_intensity.ravel()
+        # Mean intensity per voxel
+        voxel_features = (sum_features / count_features).reshape(-1, 1)
 
-    # Sum of intensity per voxel index
-    sum_features = np.bincount(unique_inverse_indices, weights=flat_intensity)
-    count_features = np.bincount(unique_inverse_indices)
+        print(f"Voxelization: {len(raw_xyz)} points -> {len(unique_coords)} voxels")
 
-    # Mean intensity per voxel
-    voxel_features = (sum_features / count_features).reshape(-1, 1)
+        # Prepare Tensor for SpConv
+        # Add Batch Dimension (0) to coordinates -> [BatchIdx, X, Y, Z]
+        batch_coords = np.pad(unique_coords, ((0,0), (1,0)), mode='constant', constant_values=0)
 
-    print(f"Voxelization: {len(raw_xyz)} points -> {len(unique_coords)} voxels")
+        # Dynamic Spatial Shape (max coord + padding)
+        spatial_shape = (unique_coords.max(0) + 10).tolist()
 
-    # Prepare Tensor for SpConv
-    # Add Batch Dimension (0) to coordinates -> [BatchIdx, X, Y, Z]
-    batch_coords = np.pad(unique_coords, ((0,0), (1,0)), mode='constant', constant_values=0)
+        input_tensor = spconv.SparseConvTensor(
+            features=torch.as_tensor(voxel_features, dtype=torch.float32, device=device),
+            indices=torch.as_tensor(batch_coords, dtype=torch.int32, device=device),
+            spatial_shape=spatial_shape,
+            batch_size=1
+        )
 
-    # Dynamic Spatial Shape (max coord + padding)
-    spatial_shape = (unique_coords.max(0) + 10).tolist()
+        # 3. INFERENCE
+        print("Running inference...")
+        with torch.no_grad():
+            output = model(input_tensor)
+            # output is dense features tensor (N_voxels, Num_Classes)
+            voxel_logits = output.cpu().numpy()
+            voxel_preds = np.argmax(voxel_logits, axis=1)
 
-    input_tensor = spconv.SparseConvTensor(
-        features=torch.as_tensor(voxel_features, dtype=torch.float32, device=device),
-        indices=torch.as_tensor(batch_coords, dtype=torch.int32, device=device),
-        spatial_shape=spatial_shape,
-        batch_size=1
-    )
+        # 4. MAP PREDICTIONS BACK TO POINTS
+        # Assign every point the label of the voxel it falls into
+        point_labels_model = voxel_preds[unique_inverse_indices]
 
-    # 4. INFERENCE
-    print("Running inference...")
-    with torch.no_grad():
-        output = model(input_tensor)
-        # output is dense features tensor (N_voxels, Num_Classes)
-        voxel_logits = output.cpu().numpy()
-        voxel_preds = np.argmax(voxel_logits, axis=1)
+        # Map Model Classes -> LAS Codes
+        point_labels_las = np.zeros_like(point_labels_model, dtype=np.uint8)
+        for model_class, las_code in MODEL_TO_LAS_MAP.items():
+            point_labels_las[point_labels_model == model_class] = las_code
 
-    # 5. MAP PREDICTIONS BACK TO POINTS
-    # Assign every point the label of the voxel it falls into
-    point_labels_model = voxel_preds[unique_inverse_indices]
+        # 5. SAVE
+        print(f"Saving to {output_path}...")
+        save_las(output_path, original_arrays, point_labels_las, meta)
+        print(f"Done: {output_path}")
+        return True
 
-    # Map Model Classes -> LAS Codes
-    point_labels_las = np.zeros_like(point_labels_model, dtype=np.uint8)
-    for model_class, las_code in MODEL_TO_LAS_MAP.items():
-        point_labels_las[point_labels_model == model_class] = las_code
+    except Exception as e:
+        print(f"ERROR: failed processing {input_path}: {e}")
+        return False
 
-    # 6. SAVE
-    print(f"Saving to {args.output}...")
-    save_las(args.output, original_arrays, point_labels_las, meta)
-    print("Done.")
+
+def parse_pairs_file(filepath):
+    """Parse a TSV file of input/output path pairs.
+
+    Each line: input_path<TAB>output_path
+
+    Returns:
+        List of (input_path, output_path) tuples.
+    """
+    pairs = []
+    with open(filepath, 'r') as f:
+        for line_num, line in enumerate(f, 1):
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split('\t')
+            if len(parts) != 2:
+                raise ValueError(
+                    f"Line {line_num} in {filepath}: expected 2 tab-separated fields, got {len(parts)}"
+                )
+            pairs.append((parts[0], parts[1]))
+    return pairs
+
+
+def run_batch_inference(model, pairs, voxel_size=0.05, device=torch.device("cpu")):
+    """Run inference on multiple input/output file pairs.
+
+    Processes each pair sequentially, continuing on failure so one bad file
+    does not prevent the rest from being processed.
+
+    Args:
+        model: Pre-loaded SparseUNet model (already on device, in eval mode).
+        pairs: List of (input_path, output_path) tuples.
+        voxel_size: Voxel size in meters. Default: 0.05.
+        device: Device the model is on. Default: cpu.
+
+    Returns:
+        Tuple of (succeeded_count, failed_count).
+    """
+    succeeded = 0
+    failed = 0
+    total = len(pairs)
+    for i, (input_path, output_path) in enumerate(pairs, 1):
+        print(f"\n[{i}/{total}] {input_path} -> {output_path}")
+        ok = run_inference(model, input_path, output_path, voxel_size, device)
+        if ok:
+            succeeded += 1
+        else:
+            failed += 1
+    print(f"\nBatch complete: {succeeded} succeeded, {failed} failed out of {total}")
+    return succeeded, failed
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Bridge Classification Inference")
+    parser.add_argument('--input', type=str, default=None, help='Input LAS/LAZ file (single-file mode)')
+    parser.add_argument('--output', type=str, default=None, help='Output LAS/LAZ file (single-file mode)')
+    parser.add_argument('--pairs-file', type=str, default=None,
+                        help='TSV file with input<TAB>output pairs (batch mode)')
+    parser.add_argument('--model', type=str, required=True, help='Path to .pth/.ckpt checkpoint')
+    parser.add_argument('--voxel-size', type=float, default=0.05, help='Voxel size (must match training)')
+    parser.add_argument('--gpu', action='store_true', help='Force use of GPU')
+    args = parser.parse_args()
+
+    # Validate: either single-file mode or batch mode, not both
+    if args.pairs_file and (args.input or args.output):
+        parser.error("Cannot use --pairs-file with --input/--output. Choose one mode.")
+    if args.pairs_file is None and (args.input is None or args.output is None):
+        parser.error("Provide either --input and --output, or --pairs-file.")
+
+    # Device handling
+    use_cuda = args.gpu and torch.cuda.is_available()
+    device = torch.device("cuda" if use_cuda else "cpu")
+    print(f"Using device: {device}")
+
+    # Load model ONCE
+    model = load_model(args.model, device)
+
+    # Dispatch
+    if args.pairs_file:
+        pairs = parse_pairs_file(args.pairs_file)
+        succeeded, failed = run_batch_inference(model, pairs, args.voxel_size, device)
+        if failed > 0:
+            sys.exit(1)
+    else:
+        ok = run_inference(model, args.input, args.output, args.voxel_size, device)
+        if not ok:
+            sys.exit(1)
 
 if __name__ == "__main__":
     main()

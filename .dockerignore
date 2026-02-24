@@ -16,6 +16,10 @@ experiments/
 .vscode/
 .cursor/
 
+# Infrastructure and planning (not needed in container)
+terraform/
+plan/
+
 # Python and conda cache
 __pycache__/
 *.py[cod]

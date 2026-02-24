@@ -1,8 +1,19 @@
 # AWS Batch Inference
 
-Scale inference to thousands of bridges in parallel using AWS Batch array jobs. Each array element processes one bridge: downloads from S3, runs inference, uploads the classified result.
+Scale inference to hundreds of thousands of bridges in parallel using AWS Batch array jobs. Infrastructure is managed with Terraform; job submission and Docker builds are handled by shell scripts.
 
-**Script**: `scripts/batch_entrypoint.sh`
+Each array child downloads a **chunk** of the manifest (default ~60 files), loads the model once, runs batch inference, and uploads the classified results to S3.
+
+**Key files**:
+
+| File | Purpose |
+|------|---------|
+| `terraform/` | Infrastructure as code (ECR, compute env, queue, job definition) |
+| `terraform/terraform.tfvars` | All configurable values — gitignored; copy from `.tfvars.example` |
+| `terraform/terraform.tfvars.example` | Template with placeholder values for new setups |
+| `scripts/build_and_push.sh` | Build Docker image and push to ECR |
+| `scripts/submit_batch_job.sh` | Submit single or array batch jobs |
+| `scripts/batch_entrypoint.sh` | Container entrypoint (download, infer, upload) |
 
 ---
 
@@ -11,16 +22,16 @@ Scale inference to thousands of bridges in parallel using AWS Batch array jobs. 
 ```mermaid
 flowchart LR
   subgraph S3
-    M[Manifest file<br/>split_all_ids.txt]
+    M[Manifest file<br/>split_test_ids.txt]
     CK[Model checkpoint<br/>.ckpt]
     IN[Source LAZ files<br/>per bridge]
     OUT[Classified LAZ<br/>_predicted.laz]
   end
 
-  subgraph Batch["AWS Batch Array Job (N elements)"]
-    B0[Job index 0<br/>bridge_A.laz]
-    B1[Job index 1<br/>bridge_B.laz]
-    BN[Job index N-1<br/>bridge_N.laz]
+  subgraph Batch["AWS Batch Array Job (N children)"]
+    B0[Child 0<br/>files 1–60]
+    B1[Child 1<br/>files 61–120]
+    BN[Child N-1<br/>files ...]
   end
 
   M --> Batch
@@ -29,38 +40,179 @@ flowchart LR
   Batch --> OUT
 ```
 
-Each job element reads one line from the manifest (by `AWS_BATCH_JOB_ARRAY_INDEX`), downloads the corresponding LAZ from S3, runs `src/inference.py`, and uploads `{bridge_stem}_predicted.laz` back to S3.
+Each child:
+
+1. Downloads the full manifest and model from S3
+2. Computes its chunk of manifest lines based on `AWS_BATCH_JOB_ARRAY_INDEX` and `ARRAY_SIZE`
+3. Downloads all input files for its chunk
+4. Runs `src/inference.py --pairs-file` (model loaded once, all files processed in batch)
+5. Uploads `{bridge_stem}_predicted.laz` results to S3
 
 ---
 
 ## Prerequisites
 
 - AWS account with IAM permissions for Batch, ECR, S3
-- Docker image built and pushed to ECR (see below)
+- [Terraform](https://developer.hashicorp.com/terraform/install) installed
+- Docker installed (for building images)
 - Trained model checkpoint uploaded to S3
 - A manifest file listing bridges to process (one per line)
 
 ---
 
-## Docker Image
+## Quick Start
 
-The same Docker image used for training is used for inference.
+### 1. Configure
+
+Copy the example and fill in your values (`terraform.tfvars` is gitignored):
 
 ```bash
-# Build
-docker build -t bridge-classifier .
-
-# Tag for ECR
-aws ecr get-login-password --region <region> | \
-  docker login --username AWS --password-stdin \
-  <account_id>.dkr.ecr.<region>.amazonaws.com
-
-docker tag bridge-classifier:latest \
-  <account_id>.dkr.ecr.<region>.amazonaws.com/bridge-classifier:latest
-
-# Push
-docker push <account_id>.dkr.ecr.<region>.amazonaws.com/bridge-classifier:latest
+cp terraform/terraform.tfvars.example terraform/terraform.tfvars
 ```
+
+Edit `terraform/terraform.tfvars` with your S3 paths, model, and AWS settings:
+
+```hcl
+# terraform/terraform.tfvars
+
+# S3 / Inference config — change these for new runs
+s3_manifest_uri  = "s3://fimc-data/bridge-classification/ml-data/split_test_ids.txt"
+s3_model_uri     = "s3://fimc-data/path/to/your-model.ckpt"
+s3_output_prefix = "scratch/your-name/predictions"
+
+# Compute (optional tweaks)
+use_spot       = false          # true for ~60-70% cost savings (risk of interruption)
+instance_types = ["g4dn.xlarge"]
+max_vcpus      = 256
+```
+
+See [Configuration Reference](#configuration-reference) for all available options.
+
+### 2. Deploy Infrastructure
+
+```bash
+cd terraform
+terraform init      # first time only
+terraform plan      # preview changes
+terraform apply     # create/update resources
+```
+
+This creates: ECR repository, Batch compute environment, job queue, and job definition (with your S3 config baked into the job definition env vars).
+
+### 3. Build and Push Docker Image
+
+```bash
+./scripts/build_and_push.sh
+```
+
+Only needed when you change code (`src/`, `scripts/batch_entrypoint.sh`, or `Dockerfile`). Changing S3 paths in `terraform.tfvars` does **not** require a rebuild — those are environment variables in the job definition.
+
+### 4. Submit a Job
+
+```bash
+# Test with a single container (processes all files sequentially)
+./scripts/submit_batch_job.sh --single
+
+# Production array job (auto-counts manifest from S3)
+./scripts/submit_batch_job.sh
+
+# Or provide the count explicitly (no S3 access needed)
+./scripts/submit_batch_job.sh --total 600000
+
+# Or count from a local copy of the manifest
+./scripts/submit_batch_job.sh --manifest ./scripts/split_test_ids.txt
+```
+
+### 5. Monitor
+
+The submit script prints a link to the AWS Batch console. Or use the CLI:
+
+```bash
+aws batch list-jobs --job-queue bridge-classifier-inference-queue --job-status RUNNING --profile test-se
+```
+
+### 6. Cleanup
+
+To tear down all Batch infrastructure:
+
+```bash
+cd terraform
+terraform destroy
+```
+
+This removes the ECR repository, compute environment, job queue, and job definition. It does **not** delete S3 data or IAM roles.
+
+To clean up manually (without terraform):
+
+```bash
+# 1. Disable and delete job queue
+aws batch update-job-queue --job-queue bridge-classifier-inference-queue --state DISABLED --profile test-se
+aws batch delete-job-queue --job-queue bridge-classifier-inference-queue --profile test-se
+
+# 2. Disable and delete compute environment (wait for queue deletion first)
+aws batch update-compute-environment --compute-environment bridge-classifier-gpu-ec2 --state DISABLED --profile test-se
+aws batch delete-compute-environment --compute-environment bridge-classifier-gpu-ec2 --profile test-se
+
+# 3. Deregister job definition
+aws batch deregister-job-definition --job-definition bridge-classifier-inference:1 --profile test-se
+```
+
+---
+
+## What to Change Where
+
+| Want to change... | Edit | Then run |
+|---|---|---|
+| Model checkpoint | `terraform/terraform.tfvars` → `s3_model_uri` | `terraform apply` |
+| Manifest (file list) | `terraform/terraform.tfvars` → `s3_manifest_uri` | `terraform apply` |
+| Output location | `terraform/terraform.tfvars` → `s3_output_prefix` | `terraform apply` |
+| GPU instance type | `terraform/terraform.tfvars` → `instance_types` | `terraform apply` |
+| Spot vs On-Demand | `terraform/terraform.tfvars` → `use_spot` | `terraform apply` |
+| Files per container | Set env var at submit time | `CHUNK_TARGET=100 ./scripts/submit_batch_job.sh --total N` |
+| Inference code | Edit `src/inference.py` or `scripts/batch_entrypoint.sh` | `./scripts/build_and_push.sh`, then resubmit |
+| Job memory/vCPUs | `terraform/terraform.tfvars` → `job_memory`, `job_vcpus` | `terraform apply` |
+
+**One-time override without changing terraform:** Pass S3 env vars at submit time:
+
+```bash
+S3_MODEL_URI=s3://fimc-data/path/to/other-model.ckpt \
+S3_OUTPUT_PREFIX=scratch/experiment-2/predictions \
+  ./scripts/submit_batch_job.sh --total 500
+```
+
+These are passed as container env overrides and take precedence over the terraform defaults for that job only.
+
+---
+
+## How Chunking Works
+
+The submit script computes how many array children to create:
+
+```
+ARRAY_SIZE = ceil(TOTAL_FILES / CHUNK_TARGET)
+```
+
+- `CHUNK_TARGET` defaults to 60 (files per container)
+- `ARRAY_SIZE` is capped at 10,000 (AWS Batch hard limit)
+
+Each child computes its chunk at runtime from the actual manifest:
+
+```bash
+TOTAL_FILES=$(wc -l < manifest.txt)
+CHUNK_SIZE=$(( (TOTAL_FILES + ARRAY_SIZE - 1) / ARRAY_SIZE ))
+START=$(( JOB_INDEX * CHUNK_SIZE + 1 ))
+END=$(( START + CHUNK_SIZE - 1 ))
+```
+
+Example with 600,000 files:
+
+| | Value |
+|---|---|
+| CHUNK_TARGET | 60 |
+| ARRAY_SIZE | 10,000 children |
+| Files per child | ~60 |
+
+The entrypoint re-counts the actual manifest, so chunk boundaries adapt even if `--total` was approximate.
 
 ---
 
@@ -79,100 +231,93 @@ One bridge per line. Two formats are supported:
 s3://my-bucket/path/to/bridge_xyz.laz
 ```
 
-The split manifest produced by `utils/split_data.py` (`split_test_ids.txt`) is directly usable as a manifest file.
-
-**Upload to S3**:
-```bash
-aws s3 cp split_test_ids.txt s3://fimc-data/bridge-classification/ml-data/split_test_ids.txt
-```
+The split manifest produced by `utils/split_data.py` (`split_test_ids.txt`) is directly usable.
 
 ---
 
-## Environment Variables
+## Configuration Reference
 
-All configuration is passed via environment variables. Defaults match the current deployment.
+All variables are defined in `terraform/variables.tf` with defaults. Override them in `terraform/terraform.tfvars`.
+
+### AWS & General
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `S3_BUCKET` | `fimc-data` | S3 bucket name for all I/O |
-| `S3_INPUT_PREFIX` | `bridge-classification/ml-data/source` | Prefix for source LAZ files (used with relative manifest lines) |
-| `S3_MANIFEST_URI` | `s3://fimc-data/bridge-classification/ml-data/split_test_ids.txt` | Full S3 URI of the manifest file |
-| `S3_MODEL_URI` | *(see script default)* | Full S3 URI of the trained `.ckpt` checkpoint |
-| `S3_OUTPUT_PREFIX` | `scratch/.../predictions` | S3 key prefix where `_predicted.laz` files are uploaded |
-| `USE_GPU` | `true` | Pass `--gpu` to `inference.py` when `true`; use CPU when `false` |
+| `aws_region` | `us-east-1` | AWS region |
+| `aws_profile` | `test-se` | AWS CLI profile |
+| `project_name` | `bridge-classifier` | Prefix for all resource names |
 
-`AWS_BATCH_JOB_ARRAY_INDEX` is set automatically by AWS Batch for array jobs (0-indexed). It defaults to `0` for single-job testing.
+### IAM Roles (existing — not managed by Terraform)
 
----
+| Variable | Description |
+|----------|-------------|
+| `batch_job_role_arn` | IAM role for job containers (needs S3 read/write) |
+| `batch_instance_profile` | EC2 instance profile for compute instances |
+| `spot_fleet_role_arn` | EC2 Spot Fleet role (only used when `use_spot = true`) |
+| `batch_service_role_arn` | AWS Batch service-linked role |
 
-## Job Definition Setup
+### Compute
 
-Create an AWS Batch job definition with:
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `instance_types` | `["g4dn.xlarge"]` | GPU instance type(s) |
+| `max_vcpus` | `256` | Max vCPUs across all instances |
+| `use_spot` | `true` | Use Spot instances (cheaper, risk of interruption) |
 
-```json
-{
-  "jobDefinitionName": "bridge-inference",
-  "type": "container",
-  "containerProperties": {
-    "image": "<account_id>.dkr.ecr.<region>.amazonaws.com/bridge-classifier:latest",
-    "command": ["scripts/batch_entrypoint.sh"],
-    "resourceRequirements": [
-      {"type": "VCPU", "value": "4"},
-      {"type": "MEMORY", "value": "16384"},
-      {"type": "GPU", "value": "1"}
-    ],
-    "environment": [
-      {"name": "S3_BUCKET", "value": "fimc-data"},
-      {"name": "S3_MANIFEST_URI", "value": "s3://fimc-data/bridge-classification/ml-data/split_test_ids.txt"},
-      {"name": "S3_MODEL_URI", "value": "s3://fimc-data/.../model.ckpt"},
-      {"name": "S3_OUTPUT_PREFIX", "value": "predictions/run-001"},
-      {"name": "USE_GPU", "value": "true"}
-    ],
-    "jobRoleArn": "arn:aws:iam::<account_id>:role/BatchJobRole"
-  }
-}
-```
+### Job Definition
 
-The IAM role needs: `s3:GetObject` on the input bucket, `s3:PutObject` on the output prefix.
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `job_vcpus` | `3` | vCPUs per container |
+| `job_memory` | `15000` | Memory (MB) per container |
+| `shared_memory_size` | `4096` | Shared memory (MB) for PyTorch/spconv |
+
+### S3 / Inference
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `s3_bucket` | `fimc-data` | S3 bucket for all I/O |
+| `s3_input_prefix` | `bridge-classification/ml-data/source` | Prefix for source LAZ files |
+| `s3_manifest_uri` | `s3://fimc-data/.../split_test_ids.txt` | Full S3 URI of manifest |
+| `s3_model_uri` | *(see tfvars)* | Full S3 URI of model checkpoint |
+| `s3_output_prefix` | `scratch/.../predictions` | Where `_predicted.laz` files are uploaded |
 
 ---
 
-## Submitting an Array Job
+## Terraform Outputs
+
+After `terraform apply`, these are available to scripts (and for reference):
 
 ```bash
-# Count manifest lines to set array size
-N=$(aws s3 cp s3://fimc-data/.../split_test_ids.txt - | wc -l)
-
-aws batch submit-job \
-  --job-name bridge-inference-run-001 \
-  --job-queue <your-gpu-queue> \
-  --job-definition bridge-inference \
-  --array-properties size=${N} \
-  --container-overrides '{
-    "environment": [
-      {"name": "S3_MODEL_URI", "value": "s3://fimc-data/.../best.ckpt"},
-      {"name": "S3_OUTPUT_PREFIX", "value": "predictions/run-001"}
-    ]
-  }'
+terraform output
 ```
+
+| Output | Description |
+|--------|-------------|
+| `ecr_repository_url` | ECR URL for `docker push` |
+| `job_definition_name` | Batch job definition name |
+| `job_queue_name` | Batch job queue name |
+| `compute_environment_name` | Batch compute environment name |
+| `s3_manifest_uri` | S3 manifest URI (used by submit script auto-counting) |
 
 ---
 
 ## Output
 
-Each successful job produces:
+Each successful child uploads:
 
 ```
 s3://{S3_BUCKET}/{S3_OUTPUT_PREFIX}/{bridge_stem}_predicted.laz
 ```
 
-For example, if the manifest line is `02050206/bridge_10598181_USGS_LPC_PA_...` and `S3_OUTPUT_PREFIX=predictions/run-001`:
+The output LAZ preserves all original fields (GPS time, return number, etc.) with only the `Classification` field updated to ASPRS codes:
 
-```
-s3://fimc-data/predictions/run-001/bridge_10598181_USGS_LPC_PA_..._predicted.laz
-```
-
-The output LAZ preserves all original fields (GPS time, return number, etc.) with only the `Classification` field updated to ASPRS codes (1, 2, 17, 18).
+| Code | Class |
+|------|-------|
+| 1 | Unclassified (Background) |
+| 2 | Ground |
+| 17 | Bridge Deck |
+| 18 | High Noise (Obstacles) |
 
 ---
 
@@ -180,22 +325,24 @@ The output LAZ preserves all original fields (GPS time, return number, etc.) wit
 
 | Instance | GPU | GPU RAM | vCPU | RAM | Notes |
 |----------|-----|---------|------|-----|-------|
-| `g5.xlarge` | 1× A10G | 24 GB | 4 | 16 GB | Sufficient for most bridges |
-| `g5.2xlarge` | 1× A10G | 24 GB | 8 | 32 GB | Better for large bridges or high throughput |
-| `g5.4xlarge` | 1× A10G | 24 GB | 16 | 64 GB | Used for training; overkill for inference |
+| `g4dn.xlarge` | 1x T4 | 16 GB | 4 | 16 GB | Current default; good for inference |
+| `g5.xlarge` | 1x A10G | 24 GB | 4 | 16 GB | Faster GPU; good for large bridges |
+| `g5.2xlarge` | 1x A10G | 24 GB | 8 | 32 GB | More CPU/RAM headroom |
 
-Set `USE_GPU=false` for CPU-only instances (slower but no GPU cost).
+Set `USE_GPU=false` in the job definition for CPU-only instances (slower but no GPU cost).
 
 ---
 
 ## Troubleshooting
 
-**"No manifest line for index N"**: Array size exceeds the number of lines in the manifest. Check `N` matches `wc -l` of the manifest.
+**Job stuck in RUNNABLE**: Compute environment may not have capacity. Check that `max_vcpus` is sufficient and the instance type is available in your subnets/AZs.
+
+**"Cannot determine manifest" error**: The submit script needs the file count for array jobs. Use `--total N`, `--manifest <file>`, or ensure `S3_MANIFEST_URI` is accessible.
 
 **Model loading errors**: Ensure the checkpoint was saved by `BridgeLightningModule` (Lightning format with `state_dict` key). The inference script handles both Lightning checkpoints and raw state dicts.
 
 **GPU out of memory**: Large bridges with dense point clouds can exceed GPU memory. Either use a larger instance or add `--voxel-size 0.10` to the inference command in `batch_entrypoint.sh` (coarser voxels = fewer voxels = less memory).
 
-**S3 permission denied**: Verify the Batch job IAM role has `s3:GetObject` on the source bucket and `s3:PutObject` on the output prefix.
+**S3 permission denied**: Verify the Batch job IAM role (`batch_job_role_arn`) has `s3:GetObject` on the input bucket and `s3:PutObject` on the output prefix.
 
-**Missing `aws` CLI inside container**: The Docker image must include `awscli`. Add `RUN pip install awscli` to the Dockerfile if missing.
+**Spot instance interruptions**: If using `use_spot = true`, jobs may be interrupted. AWS Batch will automatically retry. For critical runs, set `use_spot = false` in `terraform.tfvars`.
