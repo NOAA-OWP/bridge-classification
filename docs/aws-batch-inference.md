@@ -125,10 +125,14 @@ Only needed when you change code (`src/`, `scripts/batch_entrypoint.sh`, or `Doc
 
 ### 5. Monitor
 
-The submit script prints a link to the AWS Batch console. Or use the CLI:
+The submit script prints links to both the Batch console and CloudWatch logs. Logs are written to a dedicated log group (`/aws/batch/bridge-classifier`) with **1-year retention** — old logs are automatically deleted.
 
 ```bash
+# List running jobs
 aws batch list-jobs --job-queue bridge-classifier-inference-queue --job-status RUNNING --profile test-se
+
+# Tail logs for a specific child (replace log stream name)
+aws logs tail /aws/batch/bridge-classifier --follow --profile test-se
 ```
 
 ### 6. Cleanup
@@ -299,6 +303,15 @@ terraform output
 | `job_queue_name` | Batch job queue name |
 | `compute_environment_name` | Batch compute environment name |
 | `s3_manifest_uri` | S3 manifest URI (used by submit script auto-counting) |
+| `log_group_name` | CloudWatch log group for Batch job logs |
+
+---
+
+## Cost Tracking
+
+All Batch resources are tagged with `Project = bridge-classifier`. Tags propagate to the underlying ECS tasks via `propagate_tags = true` on the job definition.
+
+**Cost Explorer:** Go to [AWS Cost Explorer](https://console.aws.amazon.com/cost-management/home#/cost-explorer), group by **Tag → Project**, and filter to `bridge-classifier`. Enable the `Project` tag in **Billing → Cost allocation tags** if it doesn't appear yet.
 
 ---
 

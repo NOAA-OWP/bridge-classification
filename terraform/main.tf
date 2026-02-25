@@ -1,9 +1,16 @@
 # -----------------------------------------------------------------------------
 # Bridge Classification — AWS Batch Infrastructure
 #
-# Manages: ECR repo, Batch compute environment (SPOT), job queue, job definition.
+# Manages: ECR repo, Batch compute environment (SPOT), job queue, job definition,
+#          CloudWatch log group.
 # IAM roles are NOT managed here — they are referenced by ARN.
 # -----------------------------------------------------------------------------
+
+locals {
+  tags = {
+    Project = var.project_name
+  }
+}
 
 terraform {
   required_version = ">= 1.0"
@@ -21,6 +28,15 @@ provider "aws" {
 }
 
 # -----------------------------------------------------------------------------
+# CloudWatch Log Group (365-day retention, auto-deleted after 1 year)
+# -----------------------------------------------------------------------------
+resource "aws_cloudwatch_log_group" "batch" {
+  name              = "/aws/batch/${var.project_name}"
+  retention_in_days = 365
+  tags              = local.tags
+}
+
+# -----------------------------------------------------------------------------
 # ECR Repository
 # -----------------------------------------------------------------------------
 resource "aws_ecr_repository" "inference" {
@@ -31,6 +47,8 @@ resource "aws_ecr_repository" "inference" {
   image_scanning_configuration {
     scan_on_push = false
   }
+
+  tags = local.tags
 }
 
 # -----------------------------------------------------------------------------
@@ -56,6 +74,8 @@ resource "aws_batch_compute_environment" "gpu" {
     spot_iam_fleet_role  = var.use_spot ? var.spot_fleet_role_arn : null
   }
 
+  tags = local.tags
+
   lifecycle {
     create_before_destroy = true
   }
@@ -73,21 +93,24 @@ resource "aws_batch_job_queue" "inference" {
     order               = 1
     compute_environment = aws_batch_compute_environment.gpu.arn
   }
+
+  tags = local.tags
 }
 
 # -----------------------------------------------------------------------------
 # Batch Job Definition
 # -----------------------------------------------------------------------------
 resource "aws_batch_job_definition" "inference" {
-  name = "${var.project_name}-inference"
-  type = "container"
+  name           = "${var.project_name}-inference"
+  type           = "container"
+  propagate_tags = true
 
   container_properties = jsonencode({
-    image   = "${aws_ecr_repository.inference.repository_url}:latest"
-    vcpus   = var.job_vcpus
-    memory  = var.job_memory
+    image      = "${aws_ecr_repository.inference.repository_url}:latest"
+    vcpus      = var.job_vcpus
+    memory     = var.job_memory
     jobRoleArn = var.batch_job_role_arn
-    command = ["/app/batch_entrypoint.sh"]
+    command    = ["/app/batch_entrypoint.sh"]
 
     resourceRequirements = [
       {
@@ -100,6 +123,15 @@ resource "aws_batch_job_definition" "inference" {
       sharedMemorySize = var.shared_memory_size
     }
 
+    logConfiguration = {
+      logDriver = "awslogs"
+      options = {
+        "awslogs-group"         = aws_cloudwatch_log_group.batch.name
+        "awslogs-region"        = var.aws_region
+        "awslogs-stream-prefix" = "inference"
+      }
+    }
+
     environment = [
       { name = "USE_GPU", value = "true" },
       { name = "S3_BUCKET", value = var.s3_bucket },
@@ -109,4 +141,6 @@ resource "aws_batch_job_definition" "inference" {
       { name = "S3_OUTPUT_PREFIX", value = var.s3_output_prefix },
     ]
   })
+
+  tags = local.tags
 }

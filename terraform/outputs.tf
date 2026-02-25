@@ -22,3 +22,8 @@ output "s3_manifest_uri" {
   description = "S3 manifest URI (for submit script auto-counting)"
   value       = var.s3_manifest_uri
 }
+
+output "log_group_name" {
+  description = "CloudWatch log group for Batch job logs"
+  value       = aws_cloudwatch_log_group.batch.name
+}
