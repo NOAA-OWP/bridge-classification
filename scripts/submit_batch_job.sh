@@ -83,29 +83,21 @@ else
     # Try counting from S3 (works from EC2/CI, may fail locally)
     S3_MANIFEST=${S3_MANIFEST_URI:-$(cd terraform && terraform output -raw s3_manifest_uri 2>/dev/null || echo "")}
     if [ -z "$S3_MANIFEST" ]; then
-<<<<<<< HEAD
       echo "ERROR: cannot determine manifest URI from environment or terraform."
       echo ""
       echo "Alternatives:"
       echo "  $0 --manifest <local-file>    # count lines from a local manifest"
       echo "  $0 --total <N>                # provide the count directly"
-=======
-      echo "ERROR: cannot determine manifest. Use --total <N> or --manifest <file>"
->>>>>>> origin/main
       exit 1
     fi
     echo "Counting files from S3: $S3_MANIFEST"
     TOTAL_FILES=$(aws s3 cp "$S3_MANIFEST" - --profile "$AWS_PROFILE" 2>/dev/null | wc -l | tr -d ' ') || {
-<<<<<<< HEAD
       echo "ERROR: cannot access S3 manifest (local profile may lack S3 permissions)."
       echo "The Batch job role has access; this is only needed to count lines for array sizing."
       echo ""
       echo "Alternatives:"
       echo "  $0 --manifest <local-file>    # count lines from a local manifest"
       echo "  $0 --total <N>                # provide the count directly"
-=======
-      echo "ERROR: cannot access S3 manifest. Use --total <N> or --manifest <file>"
->>>>>>> origin/main
       exit 1
     }
     echo "Total files in manifest: $TOTAL_FILES"

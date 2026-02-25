@@ -48,11 +48,8 @@ END=$(( START + CHUNK_SIZE - 1 ))
 if [ "$END" -gt "$TOTAL_FILES" ]; then END=$TOTAL_FILES; fi
 
 echo "Child $JOB_INDEX: processing lines $START-$END of $TOTAL_FILES (chunk size $CHUNK_SIZE)"
-<<<<<<< HEAD
 HUC_IDS=$(sed -n "${START},${END}p" manifest.txt | cut -d'/' -f1 | sort -u | tr '\n' ',' | sed 's/,$//')
 echo "Child $JOB_INDEX: huc_ids=[$HUC_IDS]"
-=======
->>>>>>> origin/main
 
 # 3. Pre-compute GPU flag once
 GPU_ARG=""
