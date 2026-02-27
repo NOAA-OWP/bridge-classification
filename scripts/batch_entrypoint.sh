@@ -13,6 +13,8 @@ set -o pipefail
 #
 # Required env (set by Batch or job definition):
 #   AWS_BATCH_JOB_ARRAY_INDEX  – child index (0-based), set automatically
+#     GCP Cloud Batch equivalent: BATCH_TASK_INDEX
+#     Azure Batch equivalent:     AZ_BATCH_TASK_ID
 #   ARRAY_SIZE                 – total number of array children (must match
 #                                the --array-size you submit with)
 # ---------------------------------------------------------------------------
@@ -21,12 +23,20 @@ set -o pipefail
 JOB_INDEX=${AWS_BATCH_JOB_ARRAY_INDEX:-0}
 ARRAY_SIZE=${ARRAY_SIZE:-1}
 
-# Env-based config (defaults match current hardcoded values; override in Batch job definition)
-S3_BUCKET=${S3_BUCKET:-fimc-data}
-S3_INPUT_PREFIX=${S3_INPUT_PREFIX:-bridge-classification/ml-data/source}
-S3_MANIFEST_URI=${S3_MANIFEST_URI:-s3://fimc-data/bridge-classification/ml-data/split_test_ids.txt}
-S3_MODEL_URI=${S3_MODEL_URI:-s3://fimc-data/scratch/biplov.bhandari/bridge-classification-test/experiments/bridge-base-all-data-v3/version_0/checkpoints/bridge-unet-epoch=48-val_deck_iou=83.4327.ckpt}
-S3_OUTPUT_PREFIX=${S3_OUTPUT_PREFIX:-scratch/biplov.bhandari/bridge-classification-test/predictions}
+# Validate required env vars — must be set in the Batch job definition (managed by Terraform).
+# can be overridden at submit time
+REQUIRED_VARS=(S3_BUCKET S3_INPUT_PREFIX S3_MANIFEST_URI S3_MODEL_URI S3_OUTPUT_PREFIX)
+MISSING=()
+for VAR in "${REQUIRED_VARS[@]}"; do
+  if [ -z "${!VAR}" ]; then
+    MISSING+=("$VAR")
+  fi
+done
+if [ ${#MISSING[@]} -gt 0 ]; then
+  echo "ERROR: required environment variables not set: ${MISSING[*]}"
+  echo "These should be set in the Batch job definition (managed by Terraform)."
+  exit 1
+fi
 USE_GPU=${USE_GPU:-true}
 
 # Use /tmp for downloads and inference (ephemeral storage; keeps /app read-only)
@@ -49,7 +59,7 @@ if [ "$END" -gt "$TOTAL_FILES" ]; then END=$TOTAL_FILES; fi
 
 echo "Child $JOB_INDEX: processing lines $START-$END of $TOTAL_FILES (chunk size $CHUNK_SIZE)"
 HUC_IDS=$(sed -n "${START},${END}p" manifest.txt | cut -d'/' -f1 | sort -u | tr '\n' ',' | sed 's/,$//')
-echo "Child $JOB_INDEX: huc_ids=[$HUC_IDS]"
+echo "Child $JOB_INDEX: huc_ids=[$HUC_IDS], bridge_count=$((END - START + 1))"
 
 # 3. Pre-compute GPU flag once
 GPU_ARG=""
@@ -64,6 +74,7 @@ PAIRS_FILE="$WORK_DIR/pairs.tsv"
 DOWNLOAD_FAILED=0
 declare -a S3_OUTPUT_PATHS=()
 declare -a LOCAL_OUTPUT_PATHS=()
+declare -a BRIDGE_IDS=()
 
 # Extract this child's chunk once (avoids re-scanning manifest per line)
 while IFS= read -r MANIFEST_LINE || [[ -n "$MANIFEST_LINE" ]]; do
@@ -74,6 +85,7 @@ while IFS= read -r MANIFEST_LINE || [[ -n "$MANIFEST_LINE" ]]; do
     echo "WARN: empty manifest line, skipping"
     continue
   fi
+  BRIDGE_ID=$(basename "$MANIFEST_LINE" .laz)
   if [[ "$MANIFEST_LINE" == s3://* ]]; then
     S3_INPUT_PATH="$MANIFEST_LINE"
   else
@@ -95,8 +107,9 @@ while IFS= read -r MANIFEST_LINE || [[ -n "$MANIFEST_LINE" ]]; do
     printf '%s\t%s\n' "$LOCAL_INPUT" "$LOCAL_OUTPUT" >> "$PAIRS_FILE"
     S3_OUTPUT_PATHS+=("$S3_OUTPUT_PATH")
     LOCAL_OUTPUT_PATHS+=("$LOCAL_OUTPUT")
+    BRIDGE_IDS+=("$BRIDGE_ID")
   else
-    echo "ERROR: failed to download $S3_INPUT_PATH"
+    echo "ERROR: failed to download $S3_INPUT_PATH (bridge=$BRIDGE_ID)"
     DOWNLOAD_FAILED=$((DOWNLOAD_FAILED + 1))
   fi
 done < <(sed -n "${START},${END}p" manifest.txt)
@@ -116,16 +129,17 @@ UPLOAD_FAILED=0
 for i in "${!LOCAL_OUTPUT_PATHS[@]}"; do
   LOCAL_OUT="${LOCAL_OUTPUT_PATHS[$i]}"
   S3_OUT="${S3_OUTPUT_PATHS[$i]}"
+  BRIDGE="${BRIDGE_IDS[$i]}"
   if [[ -f "$LOCAL_OUT" ]]; then
     if aws s3 cp "$LOCAL_OUT" "$S3_OUT"; then
-      echo "Uploaded: $S3_OUT"
+      echo "Uploaded: $S3_OUT (bridge=$BRIDGE)"
       UPLOAD_SUCCESS=$((UPLOAD_SUCCESS + 1))
     else
-      echo "ERROR: failed to upload $LOCAL_OUT to $S3_OUT"
+      echo "ERROR: failed to upload $LOCAL_OUT to $S3_OUT (bridge=$BRIDGE)"
       UPLOAD_FAILED=$((UPLOAD_FAILED + 1))
     fi
   else
-    echo "WARN: output not found (inference failed?): $LOCAL_OUT"
+    echo "WARN: output not found (inference failed?): $LOCAL_OUT (bridge=$BRIDGE)"
     UPLOAD_FAILED=$((UPLOAD_FAILED + 1))
   fi
 done

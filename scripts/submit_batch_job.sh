@@ -13,16 +13,18 @@ set -o pipefail
 #   # Single job (no array) — no manifest count needed
 #   ./scripts/submit_batch_job.sh --single
 #
-#   # Array job — provide total via local file or explicit count
-#   ./scripts/submit_batch_job.sh --manifest ./scripts/split_test_ids.txt
+#   # Array job — provide S3 manifest URI or explicit count
+#   S3_PROFILE=Data ./scripts/submit_batch_job.sh --manifest s3://fimc-data/bridge-classification/ml-data/split_test_ids.txt --profile Data
 #   ./scripts/submit_batch_job.sh --total 600000
 #
-#   # Override S3 config at runtime (passed as container env overrides)
-#   S3_MANIFEST_URI=s3://bucket/other.txt ./scripts/submit_batch_job.sh --total 5000
+#   # --manifest streams the S3 file to count lines and passes the same URI as
+#   # S3_MANIFEST_URI container override — containers use the exact same file.
+#   # --total skips line counting; containers use S3_MANIFEST_URI from the job definition.
 # ---------------------------------------------------------------------------
 
 # --- Configuration (override via environment variables) ---
 AWS_PROFILE=${AWS_PROFILE:-test-se}
+S3_PROFILE=${S3_PROFILE:-$AWS_PROFILE}
 AWS_REGION=${AWS_REGION:-us-east-1}
 
 JOB_NAME=${JOB_NAME:-bridge-inference}
@@ -43,7 +45,7 @@ MAX_ARRAY_SIZE=10000
 
 # --- Parse flags ---
 SINGLE_MODE=false
-LOCAL_MANIFEST=""
+MANIFEST_URI=""
 TOTAL_FILES=""
 
 while [ $# -gt 0 ]; do
@@ -52,14 +54,14 @@ while [ $# -gt 0 ]; do
       SINGLE_MODE=true
       shift ;;
     --manifest)
-      LOCAL_MANIFEST="$2"
+      MANIFEST_URI="$2"
       shift 2 ;;
     --total)
       TOTAL_FILES="$2"
       shift 2 ;;
     *)
       echo "Unknown argument: $1"
-      echo "Usage: $0 [--single] [--manifest <local-file>] [--total <N>]"
+      echo "Usage: $0 [--single] [--manifest <s3-uri>] [--total <N>]"
       exit 1 ;;
   esac
 done
@@ -72,35 +74,22 @@ else
   # Need total file count to compute array size
   if [ -n "$TOTAL_FILES" ]; then
     echo "Total files (provided): $TOTAL_FILES"
-  elif [ -n "$LOCAL_MANIFEST" ]; then
-    if [ ! -f "$LOCAL_MANIFEST" ]; then
-      echo "ERROR: file not found: $LOCAL_MANIFEST"
-      exit 1
-    fi
-    TOTAL_FILES=$(wc -l < "$LOCAL_MANIFEST" | tr -d ' ')
-    echo "Total files in manifest: $TOTAL_FILES"
-  else
-    # Try counting from S3 (works from EC2/CI, may fail locally)
-    S3_MANIFEST=${S3_MANIFEST_URI:-$(cd terraform && terraform output -raw s3_manifest_uri 2>/dev/null || echo "")}
-    if [ -z "$S3_MANIFEST" ]; then
-      echo "ERROR: cannot determine manifest URI from environment or terraform."
-      echo ""
-      echo "Alternatives:"
-      echo "  $0 --manifest <local-file>    # count lines from a local manifest"
-      echo "  $0 --total <N>                # provide the count directly"
-      exit 1
-    fi
-    echo "Counting files from S3: $S3_MANIFEST"
-    TOTAL_FILES=$(aws s3 cp "$S3_MANIFEST" - --profile "$AWS_PROFILE" 2>/dev/null | wc -l | tr -d ' ') || {
-      echo "ERROR: cannot access S3 manifest (local profile may lack S3 permissions)."
-      echo "The Batch job role has access; this is only needed to count lines for array sizing."
-      echo ""
-      echo "Alternatives:"
-      echo "  $0 --manifest <local-file>    # count lines from a local manifest"
-      echo "  $0 --total <N>                # provide the count directly"
+  elif [ -n "$MANIFEST_URI" ]; then
+    echo "Counting files from S3: $MANIFEST_URI"
+    TOTAL_FILES=$(aws s3 cp "$MANIFEST_URI" - --profile "$S3_PROFILE" | wc -l | tr -d ' ') || {
+      echo "ERROR: cannot read S3 manifest: $MANIFEST_URI"
+      echo "Check that your S3 profile ($S3_PROFILE) has s3:GetObject access."
       exit 1
     }
     echo "Total files in manifest: $TOTAL_FILES"
+    S3_MANIFEST_URI="$MANIFEST_URI"
+  else
+    echo "ERROR: cannot determine manifest or file count."
+    echo ""
+    echo "Alternatives:"
+    echo "  $0 --manifest <s3-uri>    # stream S3 manifest to count lines (also sets S3_MANIFEST_URI override)"
+    echo "  $0 --total <N>            # provide the count directly (uses S3_MANIFEST_URI from job definition)"
+    exit 1
   fi
 
   if [ "$TOTAL_FILES" -eq 0 ]; then

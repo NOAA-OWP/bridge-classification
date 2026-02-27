@@ -76,6 +76,8 @@ Edit `terraform/terraform.tfvars` with your S3 paths, model, and AWS settings:
 # terraform/terraform.tfvars
 
 # S3 / Inference config — change these for new runs
+s3_bucket        = "fimc-data"
+s3_input_prefix  = "bridge-classification/ml-data/source"
 s3_manifest_uri  = "s3://fimc-data/bridge-classification/ml-data/split_test_ids.txt"
 s3_model_uri     = "s3://fimc-data/path/to/your-model.ckpt"
 s3_output_prefix = "scratch/your-name/predictions"
@@ -113,19 +115,18 @@ Only needed when you change code (`src/`, `scripts/batch_entrypoint.sh`, or `Doc
 # Test with a single container (processes all files sequentially)
 ./scripts/submit_batch_job.sh --single
 
-# Production array job (auto-counts manifest from S3)
-./scripts/submit_batch_job.sh
+# Array job — provide manifest S3 URI (streams to count lines, sets S3_MANIFEST_URI override)
+S3_PROFILE=Data ./scripts/submit_batch_job.sh --manifest s3://fimc-data/bridge-classification/ml-data/split_test_ids.txt
 
-# Or provide the count explicitly (no S3 access needed)
+# Or provide the count explicitly (uses S3_MANIFEST_URI from Terraform job definition)
 ./scripts/submit_batch_job.sh --total 600000
-
-# Or count from a local copy of the manifest
-./scripts/submit_batch_job.sh --manifest ./scripts/split_test_ids.txt
 ```
 
 ### 5. Monitor
 
 The submit script prints links to both the Batch console and CloudWatch logs. Logs are written to a dedicated log group (`/aws/batch/bridge-classifier`) with **1-year retention** — old logs are automatically deleted.
+
+Log lines include `(bridge=<bridge_id>)` for per-bridge granularity. Filter CloudWatch by bridge ID to track individual file processing.
 
 ```bash
 # List running jobs
@@ -168,7 +169,7 @@ aws batch deregister-job-definition --job-definition bridge-classifier-inference
 | Want to change... | Edit | Then run |
 |---|---|---|
 | Model checkpoint | `terraform/terraform.tfvars` → `s3_model_uri` | `terraform apply` |
-| Manifest (file list) | `terraform/terraform.tfvars` → `s3_manifest_uri` | `terraform apply` |
+| Manifest (file list) | `terraform/terraform.tfvars` → `s3_manifest_uri` | `terraform apply` (or `--manifest s3://...` per-run) |
 | Output location | `terraform/terraform.tfvars` → `s3_output_prefix` | `terraform apply` |
 | GPU instance type | `terraform/terraform.tfvars` → `instance_types` | `terraform apply` |
 | Spot vs On-Demand | `terraform/terraform.tfvars` → `use_spot` | `terraform apply` |
@@ -176,15 +177,22 @@ aws batch deregister-job-definition --job-definition bridge-classifier-inference
 | Inference code | Edit `src/inference.py` or `scripts/batch_entrypoint.sh` | `./scripts/build_and_push.sh`, then resubmit |
 | Job memory/vCPUs | `terraform/terraform.tfvars` → `job_memory`, `job_vcpus` | `terraform apply` |
 
-**One-time override without changing terraform:** Pass S3 env vars at submit time:
+**One-time override without changing terraform:**
 
 ```bash
+# Override manifest for one run (also sets S3_MANIFEST_URI container override)
+S3_PROFILE=Data ./scripts/submit_batch_job.sh --manifest s3://fimc-data/path/to/other-manifest.txt
+
+# Override model and output for one run
+S3_PROFILE=Data \
 S3_MODEL_URI=s3://fimc-data/path/to/other-model.ckpt \
 S3_OUTPUT_PREFIX=scratch/experiment-2/predictions \
-  ./scripts/submit_batch_job.sh --total 500
+  ./scripts/submit_batch_job.sh --manifest s3://fimc-data/path/to/manifest.txt
 ```
 
 These are passed as container env overrides and take precedence over the terraform defaults for that job only.
+
+`S3_PROFILE` controls which AWS profile is used to read the manifest from S3 (for line counting). It defaults to `AWS_PROFILE` (`test-se`). Set it when S3 and Batch use different profiles.
 
 ---
 
@@ -220,6 +228,23 @@ The entrypoint re-counts the actual manifest, so chunk boundaries adapt even if 
 
 ---
 
+## Environment Variable Validation
+
+The entrypoint **validates** that all required S3 env vars are set at startup — there are no hardcoded defaults in the script. If any are missing, it fails fast with a clear error listing the missing variables:
+
+```
+ERROR: required environment variables not set: S3_BUCKET S3_MANIFEST_URI
+These should be set in the Batch job definition (managed by Terraform).
+```
+
+Required: `S3_BUCKET`, `S3_INPUT_PREFIX`, `S3_MANIFEST_URI`, `S3_MODEL_URI`, `S3_OUTPUT_PREFIX`
+
+Optional: `USE_GPU` (defaults to `true`)
+
+The Terraform job definition is the single source of truth for these values. The `--manifest` flag on the submit script overrides `S3_MANIFEST_URI` for that run.
+
+---
+
 ## Manifest File Format
 
 One bridge per line. Two formats are supported:
@@ -248,7 +273,8 @@ All variables are defined in `terraform/variables.tf` with defaults. Override th
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `aws_region` | `us-east-1` | AWS region |
-| `aws_profile` | `test-se` | AWS CLI profile |
+| `aws_profile` | `test-se` | AWS CLI profile (used for Batch API) |
+| `s3_profile` | *(same as aws_profile)* | AWS CLI profile for S3 access (set via `S3_PROFILE` env var at submit time) |
 | `project_name` | `bridge-classifier` | Prefix for all resource names |
 
 ### IAM Roles (existing — not managed by Terraform)
@@ -350,7 +376,9 @@ Set `USE_GPU=false` in the job definition for CPU-only instances (slower but no 
 
 **Job stuck in RUNNABLE**: Compute environment may not have capacity. Check that `max_vcpus` is sufficient and the instance type is available in your subnets/AZs.
 
-**"Cannot determine manifest" error**: The submit script needs the file count for array jobs. Use `--total N`, `--manifest <file>`, or ensure `S3_MANIFEST_URI` is accessible.
+**"Cannot determine manifest or file count" error**: The submit script needs the file count for array jobs. Use `--manifest <s3-uri>` (also sets `S3_MANIFEST_URI` override) or `--total <N>` (uses `S3_MANIFEST_URI` from job definition).
+
+**"Required environment variables not set" error**: The entrypoint validates that all S3 env vars are set. These come from the Terraform job definition. Run `terraform apply` to ensure the job definition has all required env vars.
 
 **Model loading errors**: Ensure the checkpoint was saved by `BridgeLightningModule` (Lightning format with `state_dict` key). The inference script handles both Lightning checkpoints and raw state dicts.
 
