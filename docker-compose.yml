@@ -25,5 +25,5 @@ services:
     stdin_open: true
     tty: true
     command: ["/bin/bash"]
-    # setup shared memory size for PyTorch dataloaders
-    shm_size: '8gb'
+    # Shared memory for PyTorch/spconv — matches terraform shared_memory_size (4096 MB)
+    shm_size: '4gb'

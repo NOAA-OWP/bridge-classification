@@ -104,6 +104,8 @@ This creates: ECR repository, Batch compute environment, job queue, and job defi
 ### 3. Build and Push Docker Image
 
 ```bash
+cd ..
+chmod +x ./scripts/build_and_push.sh
 ./scripts/build_and_push.sh
 ```
 

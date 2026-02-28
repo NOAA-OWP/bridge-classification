@@ -37,6 +37,10 @@ echo "Using ECR URL: $ECR_REPO"
 # Derive registry host from repo URL (e.g. 123456789.dkr.ecr.us-east-1.amazonaws.com)
 ECR_REGISTRY=$(echo "$ECR_REPO" | cut -d'/' -f1)
 
+# Git SHA tag for traceability and rollback
+GIT_SHA=$(git rev-parse --short HEAD 2>/dev/null) || GIT_SHA="unknown"
+SHA_TAG="${ECR_REPO}:git-${GIT_SHA}"
+
 # 1. Login to ECR
 echo "Logging in to ECR..."
 aws ecr get-login-password \
@@ -48,12 +52,18 @@ aws ecr get-login-password \
 echo "Building Docker image (linux/amd64)..."
 docker build --platform linux/amd64 -t bridge-classifier .
 
-# 3. Tag
+# 3. Tag (both :latest and :git-<sha>)
 docker tag bridge-classifier:latest "${ECR_REPO}:latest"
+docker tag bridge-classifier:latest "$SHA_TAG"
 
-# 4. Push
+# 4. Push both tags
 echo "Pushing to ECR..."
 docker push "${ECR_REPO}:latest"
+docker push "$SHA_TAG"
 
 echo ""
-echo "Done. Image pushed to: ${ECR_REPO}:latest"
+echo "Done."
+echo "  latest : ${ECR_REPO}:latest"
+echo "  sha    : $SHA_TAG"
+echo ""
+echo "To roll back to this image: docker tag $SHA_TAG ${ECR_REPO}:latest && docker push ${ECR_REPO}:latest"

@@ -110,34 +110,29 @@ variable "job_timeout_seconds" {
 }
 
 # -----------------------------------------------------------------------------
-# S3 / Inference Config (defaults baked into job definition environment)
+# S3 / Inference Config (baked into job definition environment; required in tfvars)
 # -----------------------------------------------------------------------------
 variable "s3_bucket" {
   description = "S3 bucket for input/output data"
   type        = string
-  default     = "fimc-data"
 }
 
 variable "s3_input_prefix" {
   description = "S3 prefix for source LAZ files"
   type        = string
-  default     = "bridge-classification/ml-data/source"
 }
 
 variable "s3_manifest_uri" {
-  description = "S3 URI of the manifest file"
+  description = "S3 URI of the manifest file (e.g. s3://bucket/path/manifest.txt)"
   type        = string
-  default     = "s3://fimc-data/bridge-classification/ml-data/split_test_ids.txt"
 }
 
 variable "s3_model_uri" {
-  description = "S3 URI of the model checkpoint"
+  description = "S3 URI of the model checkpoint (e.g. s3://bucket/path/model.ckpt)"
   type        = string
-  default     = "s3://fimc-data/scratch/biplov.bhandari/bridge-classification-test/experiments/bridge-base-all-data-v3/version_0/checkpoints/bridge-unet-epoch=48-val_deck_iou=83.4327.ckpt"
 }
 
 variable "s3_output_prefix" {
-  description = "S3 prefix for prediction outputs"
+  description = "S3 prefix for prediction outputs (no trailing slash)"
   type        = string
-  default     = "scratch/biplov.bhandari/bridge-classification-test/predictions"
 }
