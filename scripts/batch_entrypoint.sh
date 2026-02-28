@@ -39,6 +39,10 @@ if [ ${#MISSING[@]} -gt 0 ]; then
 fi
 USE_GPU=${USE_GPU:-true}
 
+# Retry transient S3 errors automatically (covers all aws s3 cp calls in this script)
+export AWS_MAX_ATTEMPTS=3
+export AWS_RETRY_MODE=adaptive
+
 # Use /tmp for downloads and inference (ephemeral storage; keeps /app read-only)
 WORK_DIR=/tmp/batch
 INPUT_DIR="$WORK_DIR/inputs"
