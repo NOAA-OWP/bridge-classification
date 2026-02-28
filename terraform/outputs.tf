@@ -27,3 +27,18 @@ output "log_group_name" {
   description = "CloudWatch log group for Batch job logs"
   value       = aws_cloudwatch_log_group.batch.name
 }
+
+output "aws_account_id" {
+  description = "AWS account ID (for scripts that need to construct AWS resource URLs)"
+  value       = var.aws_account_id
+}
+
+output "aws_region" {
+  description = "AWS region"
+  value       = var.aws_region
+}
+
+output "aws_profile" {
+  description = "AWS CLI profile"
+  value       = var.aws_profile
+}

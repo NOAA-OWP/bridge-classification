@@ -8,36 +8,41 @@ set -o pipefail
 # Usage:
 #   ./scripts/build_and_push.sh
 #
-# Gets ECR URL from terraform output. Override with ECR_REPO env var.
+# Reads config from Terraform outputs first, then falls back to environment
+# variables. Exits early if required values are missing — no hardcoded defaults.
 # ---------------------------------------------------------------------------
 
-AWS_PROFILE=${AWS_PROFILE:-test-se}
-AWS_REGION=${AWS_REGION:-us-east-1}
-AWS_ACCOUNT_ID=${AWS_ACCOUNT_ID:-591210920133}
-
-# Get ECR repo URL from terraform or env var
-if [ -n "$ECR_REPO" ]; then
-  echo "Using ECR_REPO from environment: $ECR_REPO"
-elif [ -d "terraform" ] && command -v terraform &>/dev/null; then
-  ECR_REPO=$(cd terraform && terraform output -raw ecr_repository_url 2>/dev/null) || true
+# Read from terraform outputs first, then env vars
+if [ -d "terraform" ] && command -v terraform &>/dev/null; then
+  _tf_region=$(cd terraform && terraform output -raw aws_region 2>/dev/null) || true
+  _tf_profile=$(cd terraform && terraform output -raw aws_profile 2>/dev/null) || true
+  _tf_ecr=$(cd terraform && terraform output -raw ecr_repository_url 2>/dev/null) || true
+  [ -n "$_tf_region" ]  && AWS_REGION="$_tf_region"
+  [ -n "$_tf_profile" ] && AWS_PROFILE="$_tf_profile"
+  [ -n "$_tf_ecr" ]     && ECR_REPO="${ECR_REPO:-$_tf_ecr}"
 fi
 
-if [ -z "$ECR_REPO" ]; then
-  # Fallback: construct from account ID and project name
-  PROJECT_NAME=${PROJECT_NAME:-bridge-classifier}
-  ECR_REPO="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${PROJECT_NAME}"
-  echo "Using constructed ECR URL: $ECR_REPO"
-else
-  echo "Using ECR URL: $ECR_REPO"
+missing=""
+[ -z "$AWS_REGION" ]  && missing="${missing}AWS_REGION "
+[ -z "$AWS_PROFILE" ] && missing="${missing}AWS_PROFILE "
+[ -z "$ECR_REPO" ]    && missing="${missing}ECR_REPO "
+if [ -n "$missing" ]; then
+  echo "ERROR: Missing: $missing" >&2
+  echo "Run 'cd terraform && terraform init && terraform apply' or set env vars." >&2
+  exit 1
 fi
+
+echo "Using ECR URL: $ECR_REPO"
+
+# Derive registry host from repo URL (e.g. 123456789.dkr.ecr.us-east-1.amazonaws.com)
+ECR_REGISTRY=$(echo "$ECR_REPO" | cut -d'/' -f1)
 
 # 1. Login to ECR
 echo "Logging in to ECR..."
 aws ecr get-login-password \
   --region "$AWS_REGION" \
   --profile "$AWS_PROFILE" \
-  | docker login --username AWS --password-stdin \
-    "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+  | docker login --username AWS --password-stdin "$ECR_REGISTRY"
 
 # 2. Build
 echo "Building Docker image (linux/amd64)..."

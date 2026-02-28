@@ -103,6 +103,12 @@ variable "shared_memory_size" {
   default     = 4096
 }
 
+variable "job_timeout_seconds" {
+  description = "Max wall-clock seconds per array child before Batch kills it (prevents runaway GPU costs)"
+  type        = number
+  default     = 7200 # 2 hours; each child processes ~60 files at ~1 min each
+}
+
 # -----------------------------------------------------------------------------
 # S3 / Inference Config (defaults baked into job definition environment)
 # -----------------------------------------------------------------------------

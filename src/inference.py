@@ -234,7 +234,8 @@ def run_inference(model, input_path, output_path, voxel_size=0.05, device=torch.
         return True
 
     except Exception as e:
-        print(f"ERROR: failed processing {input_path}: {e}")
+        bridge_id = os.path.splitext(os.path.basename(str(input_path)))[0]
+        print(f"ERROR: failed processing (bridge={bridge_id}): {e}")
         return False
 
 

@@ -23,19 +23,31 @@ set -o pipefail
 # ---------------------------------------------------------------------------
 
 # --- Configuration (override via environment variables) ---
-AWS_PROFILE=${AWS_PROFILE:-test-se}
-S3_PROFILE=${S3_PROFILE:-$AWS_PROFILE}
-AWS_REGION=${AWS_REGION:-us-east-1}
-
-JOB_NAME=${JOB_NAME:-bridge-inference}
-
-# Try to read job definition and queue names from terraform outputs; fall back to defaults
+# Read from terraform outputs first, then env vars — no hardcoded defaults.
 if [ -d "terraform" ] && command -v terraform &>/dev/null; then
-  JOB_DEF_NAME=${JOB_DEF_NAME:-$(cd terraform && terraform output -raw job_definition_name 2>/dev/null || echo "")}
-  JOB_QUEUE=${JOB_QUEUE:-$(cd terraform && terraform output -raw job_queue_name 2>/dev/null || echo "")}
+  _tf_region=$(cd terraform && terraform output -raw aws_region 2>/dev/null) || true
+  _tf_profile=$(cd terraform && terraform output -raw aws_profile 2>/dev/null) || true
+  _tf_job_def=$(cd terraform && terraform output -raw job_definition_name 2>/dev/null) || true
+  _tf_job_queue=$(cd terraform && terraform output -raw job_queue_name 2>/dev/null) || true
+  [ -n "$_tf_region" ]    && AWS_REGION="$_tf_region"
+  [ -n "$_tf_profile" ]   && AWS_PROFILE="$_tf_profile"
+  [ -n "$_tf_job_def" ]   && JOB_DEF_NAME="${JOB_DEF_NAME:-$_tf_job_def}"
+  [ -n "$_tf_job_queue" ] && JOB_QUEUE="${JOB_QUEUE:-$_tf_job_queue}"
 fi
-JOB_DEF_NAME=${JOB_DEF_NAME:-bridge-classifier-inference}
-JOB_QUEUE=${JOB_QUEUE:-bridge-classifier-inference-queue}
+
+missing=""
+[ -z "$AWS_REGION" ]   && missing="${missing}AWS_REGION "
+[ -z "$AWS_PROFILE" ]  && missing="${missing}AWS_PROFILE "
+[ -z "$JOB_DEF_NAME" ] && missing="${missing}JOB_DEF_NAME "
+[ -z "$JOB_QUEUE" ]    && missing="${missing}JOB_QUEUE "
+if [ -n "$missing" ]; then
+  echo "ERROR: Missing: $missing" >&2
+  echo "Run 'cd terraform && terraform init && terraform apply' or set env vars." >&2
+  exit 1
+fi
+
+S3_PROFILE=${S3_PROFILE:-$AWS_PROFILE}
+JOB_NAME=${JOB_NAME:-bridge-inference}
 
 # Target number of files each array child processes
 CHUNK_TARGET=${CHUNK_TARGET:-60}

@@ -105,6 +105,10 @@ resource "aws_batch_job_definition" "inference" {
   type           = "container"
   propagate_tags = true
 
+  timeout {
+    attempt_duration_seconds = var.job_timeout_seconds
+  }
+
   container_properties = jsonencode({
     image      = "${aws_ecr_repository.inference.repository_url}:latest"
     vcpus      = var.job_vcpus

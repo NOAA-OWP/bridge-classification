@@ -116,14 +116,19 @@ done < <(sed -n "${START},${END}p" manifest.txt)
 
 # 5. Run inference ONCE for all files (model loaded once, not per-file)
 echo "Running batch inference..."
+INFERENCE_EXIT=0
 python /app/src/inference.py \
   --pairs-file "$PAIRS_FILE" \
   --model "$WORK_DIR/model.ckpt" \
   $GPU_ARG \
-  || true  # Don't fail here; per-file errors are tracked by checking outputs
+  || INFERENCE_EXIT=$?
+if [ "$INFERENCE_EXIT" -ne 0 ]; then
+  echo "ERROR: inference process exited with code $INFERENCE_EXIT"
+fi
 
 # 6. Upload all output files
 UPLOAD_SUCCESS=0
+INFERENCE_FAILED=0
 UPLOAD_FAILED=0
 
 for i in "${!LOCAL_OUTPUT_PATHS[@]}"; do
@@ -139,18 +144,18 @@ for i in "${!LOCAL_OUTPUT_PATHS[@]}"; do
       UPLOAD_FAILED=$((UPLOAD_FAILED + 1))
     fi
   else
-    echo "WARN: output not found (inference failed?): $LOCAL_OUT (bridge=$BRIDGE)"
-    UPLOAD_FAILED=$((UPLOAD_FAILED + 1))
+    echo "ERROR: inference failed for (bridge=$BRIDGE)"
+    INFERENCE_FAILED=$((INFERENCE_FAILED + 1))
   fi
 done
 
 # 7. Summary and cleanup
 TOTAL_ATTEMPTED=$((END - START + 1))
-echo "Child $JOB_INDEX complete: $UPLOAD_SUCCESS uploaded, $UPLOAD_FAILED failed, $DOWNLOAD_FAILED download failures out of $TOTAL_ATTEMPTED"
+echo "Child $JOB_INDEX complete: $UPLOAD_SUCCESS uploaded, $INFERENCE_FAILED inference failures, $UPLOAD_FAILED upload failures, $DOWNLOAD_FAILED download failures out of $TOTAL_ATTEMPTED"
 
 rm -rf "$WORK_DIR"
 
 # Exit non-zero if ANY failures so Batch marks this child as failed
-if [ "$UPLOAD_FAILED" -gt 0 ] || [ "$DOWNLOAD_FAILED" -gt 0 ]; then
+if [ "$UPLOAD_FAILED" -gt 0 ] || [ "$DOWNLOAD_FAILED" -gt 0 ] || [ "$INFERENCE_FAILED" -gt 0 ]; then
   exit 1
 fi
