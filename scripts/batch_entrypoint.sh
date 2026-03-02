@@ -40,6 +40,7 @@ if [ ${#MISSING[@]} -gt 0 ]; then
   exit 1
 fi
 USE_GPU=${USE_GPU:-true}
+BRIDGE_TIMEOUT=${BRIDGE_TIMEOUT:-150}
 
 # Retry transient S3 errors automatically (covers all aws s3 cp calls in this script)
 export AWS_MAX_ATTEMPTS=3
@@ -127,6 +128,7 @@ INFERENCE_EXIT=0
 python /app/src/inference.py \
   --pairs-file "$PAIRS_FILE" \
   --model "$WORK_DIR/model.ckpt" \
+  --bridge-timeout "$BRIDGE_TIMEOUT" \
   $GPU_ARG \
   || INFERENCE_EXIT=$?
 INFERENCE_END=$(date +%s)

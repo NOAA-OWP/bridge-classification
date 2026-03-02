@@ -133,6 +133,7 @@ ENV_ITEMS='{"name":"ARRAY_SIZE","value":"'"$ARRAY_SIZE"'"}'
 [ -n "$S3_BUCKET" ] && ENV_ITEMS="$ENV_ITEMS"',{"name":"S3_BUCKET","value":"'"$S3_BUCKET"'"}'
 [ -n "$S3_INPUT_PREFIX" ] && ENV_ITEMS="$ENV_ITEMS"',{"name":"S3_INPUT_PREFIX","value":"'"$S3_INPUT_PREFIX"'"}'
 [ -n "$S3_OUTPUT_PREFIX" ] && ENV_ITEMS="$ENV_ITEMS"',{"name":"S3_OUTPUT_PREFIX","value":"'"$S3_OUTPUT_PREFIX"'"}'
+[ -n "$BRIDGE_TIMEOUT" ] && ENV_ITEMS="$ENV_ITEMS"',{"name":"BRIDGE_TIMEOUT","value":"'"$BRIDGE_TIMEOUT"'"}'
 
 CONTAINER_OVERRIDES='{"environment":['"$ENV_ITEMS"']}'
 

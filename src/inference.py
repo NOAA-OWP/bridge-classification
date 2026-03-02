@@ -33,11 +33,21 @@ Usage (batch via pairs file):
 
 import argparse
 import json
+import signal
 import torch
 import numpy as np
 import pdal
 import sys
 import os
+
+
+class BridgeTimeout(BaseException):
+    """Raised when a single bridge exceeds the per-bridge wall-clock timeout."""
+    pass
+
+
+def _timeout_handler(signum, frame):
+    raise BridgeTimeout()
 
 # Ensure we can import the model structure
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -262,17 +272,22 @@ def parse_pairs_file(filepath):
     return pairs
 
 
-def run_batch_inference(model, pairs, voxel_size=0.05, device=torch.device("cpu")):
+def run_batch_inference(model, pairs, voxel_size=0.05, device=torch.device("cpu"), bridge_timeout=150):
     """Run inference on multiple input/output file pairs.
 
     Processes each pair sequentially, continuing on failure so one bad file
     does not prevent the rest from being processed.
+
+    A per-bridge wall-clock timeout (bridge_timeout seconds) is enforced via
+    SIGALRM. If a bridge hangs (e.g. stuck PDAL read, GPU kernel), it is
+    skipped and processing continues with the next bridge.
 
     Args:
         model: Pre-loaded SparseUNet model (already on device, in eval mode).
         pairs: List of (input_path, output_path) tuples.
         voxel_size: Voxel size in meters. Default: 0.05.
         device: Device the model is on. Default: cpu.
+        bridge_timeout: Seconds before a hung bridge is skipped. Default: 150.
 
     Returns:
         Tuple of (succeeded_count, failed_count).
@@ -280,13 +295,25 @@ def run_batch_inference(model, pairs, voxel_size=0.05, device=torch.device("cpu"
     succeeded = 0
     failed = 0
     total = len(pairs)
-    for i, (input_path, output_path) in enumerate(pairs, 1):
-        print(f"\n[{i}/{total}] {input_path} -> {output_path}")
-        ok = run_inference(model, input_path, output_path, voxel_size, device)
-        if ok:
-            succeeded += 1
-        else:
-            failed += 1
+    old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
+    try:
+        for i, (input_path, output_path) in enumerate(pairs, 1):
+            bridge_id = os.path.splitext(os.path.basename(str(input_path)))[0]
+            print(f"\n[{i}/{total}] {input_path} -> {output_path}")
+            signal.setitimer(signal.ITIMER_REAL, bridge_timeout)
+            try:
+                ok = run_inference(model, input_path, output_path, voxel_size, device)
+            except BridgeTimeout:
+                print(f"TIMEOUT: bridge={bridge_id} exceeded {bridge_timeout}s, skipping")
+                ok = False
+            finally:
+                signal.setitimer(signal.ITIMER_REAL, 0)  # cancel timer whether success, failure, or timeout
+            if ok:
+                succeeded += 1
+            else:
+                failed += 1
+    finally:
+        signal.signal(signal.SIGALRM, old_handler)  # always restore original handler
     print(f"\nBatch complete: {succeeded} succeeded, {failed} failed out of {total}")
     return succeeded, failed
 
@@ -300,6 +327,8 @@ def main():
     parser.add_argument('--model', type=str, required=True, help='Path to .pth/.ckpt checkpoint')
     parser.add_argument('--voxel-size', type=float, default=0.05, help='Voxel size (must match training)')
     parser.add_argument('--gpu', action='store_true', help='Force use of GPU')
+    parser.add_argument('--bridge-timeout', type=float, default=150,
+                        help='Seconds before a hung bridge is skipped in batch mode (default: 150, supports decimals)')
     args = parser.parse_args()
 
     # Validate: either single-file mode or batch mode, not both
@@ -319,7 +348,7 @@ def main():
     # Dispatch
     if args.pairs_file:
         pairs = parse_pairs_file(args.pairs_file)
-        succeeded, failed = run_batch_inference(model, pairs, args.voxel_size, device)
+        succeeded, failed = run_batch_inference(model, pairs, args.voxel_size, device, args.bridge_timeout)
         if failed > 0:
             sys.exit(1)
     else:
