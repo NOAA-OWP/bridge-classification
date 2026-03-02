@@ -19,6 +19,8 @@ set -o pipefail
 #                                the --array-size you submit with)
 # ---------------------------------------------------------------------------
 
+JOB_START=$(date +%s)
+
 # Job index: Batch sets AWS_BATCH_JOB_ARRAY_INDEX for array jobs; default 0 for single-job test
 JOB_INDEX=${AWS_BATCH_JOB_ARRAY_INDEX:-0}
 ARRAY_SIZE=${ARRAY_SIZE:-1}
@@ -120,12 +122,16 @@ done < <(sed -n "${START},${END}p" manifest.txt)
 
 # 5. Run inference ONCE for all files (model loaded once, not per-file)
 echo "Running batch inference..."
+INFERENCE_START=$(date +%s)
 INFERENCE_EXIT=0
 python /app/src/inference.py \
   --pairs-file "$PAIRS_FILE" \
   --model "$WORK_DIR/model.ckpt" \
   $GPU_ARG \
   || INFERENCE_EXIT=$?
+INFERENCE_END=$(date +%s)
+INFERENCE_SECONDS=$(( INFERENCE_END - INFERENCE_START ))
+echo "INFERENCE_WALL_CLOCK_SECONDS=$INFERENCE_SECONDS"
 if [ "$INFERENCE_EXIT" -ne 0 ]; then
   echo "ERROR: inference process exited with code $INFERENCE_EXIT"
 fi
@@ -156,6 +162,11 @@ done
 # 7. Summary and cleanup
 TOTAL_ATTEMPTED=$((END - START + 1))
 echo "Child $JOB_INDEX complete: $UPLOAD_SUCCESS uploaded, $INFERENCE_FAILED inference failures, $UPLOAD_FAILED upload failures, $DOWNLOAD_FAILED download failures out of $TOTAL_ATTEMPTED"
+
+JOB_END=$(date +%s)
+JOB_SECONDS=$(( JOB_END - JOB_START ))
+JOB_HOURS=$(echo "$JOB_SECONDS" | awk '{printf "%.4f", $1/3600}')
+echo "JOB_WALL_CLOCK_SECONDS=$JOB_SECONDS JOB_WALL_CLOCK_HOURS=$JOB_HOURS (billable instance time)"
 
 rm -rf "$WORK_DIR"
 
