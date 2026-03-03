@@ -20,6 +20,7 @@ A comprehensive pipeline for processing bridge lidar data organized by Hydrologi
 For detailed design documentation, see the `docs/` directory (or build the docs site with MkDocs):
 
 - **[Architecture](docs/architecture.md)** — System design, classification schema, algorithm details.
+- **[Conda environments](docs/envs.md)** — Full vs data-processing-only envs; use on GPU vs CPU-only machines.
 - **[Data Pipeline](docs/data-pipeline.md)** — Step-by-step data flow walkthrough with data shapes at each stage.
 - **[AWS Batch Inference](docs/aws-batch-inference.md)** — Terraform infrastructure, job submission scripts, chunking logic, and configuration reference for scaling inference with AWS Batch array jobs.
 - **[Module Reference](docs/module-reference.md)** — Summary of every module's public API and CLI arguments.
@@ -280,6 +281,8 @@ python -c "import torch; print(f'CUDA Available: {torch.cuda.is_available()}')"
 ```
 
 See [Troubleshooting](#troubleshooting).
+
+**Data-processing only (no GPU):** For running only data-processing utils on a CPU-only machine, use the lighter env that omits PyTorch/CUDA: `conda env create -f environment-data.yaml` then `conda activate bridge-classify-data`. See [Conda environments](docs/envs.md) for details.
 
 #### Option 3: Manual Installation
 
