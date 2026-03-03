@@ -36,10 +36,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import multiprocessing
 import random
 import sys
 import warnings
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -53,6 +55,49 @@ except ImportError:
     HAS_TQDM = False
 
 warnings.filterwarnings('ignore')
+
+# Global logger (initialized in main)
+logger: Optional[logging.Logger] = None
+
+
+def setup_logging(log_dir: str = './logs') -> logging.Logger:
+    """Set up logging to both file and console."""
+    global logger
+
+    log_dir_path = Path(log_dir)
+    log_dir_path.mkdir(parents=True, exist_ok=True)
+
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    log_file = log_dir_path / f'download_bridge_lidar_{timestamp}.log'
+
+    logger = logging.getLogger('download_bridge_lidar')
+    logger.setLevel(logging.INFO)
+
+    # Remove existing handlers
+    for handler in logger.handlers[:]:
+        handler.close()
+        logger.removeHandler(handler)
+
+    file_formatter = logging.Formatter(
+        '%(asctime)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    console_formatter = logging.Formatter('%(levelname)s - %(message)s')
+
+    file_handler = logging.FileHandler(str(log_file), mode='w')
+    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(file_formatter)
+    logger.addHandler(file_handler)
+
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.WARNING)
+    console_handler.setFormatter(console_formatter)
+    logger.addHandler(console_handler)
+
+    logger.info(f"Logging initialized. Log file: {log_file}")
+    print(f"Log file: {log_file}")
+    return logger
+
 
 # --- PDAL defaults (same as BridgeProcessingConfig in download-and-weak-supervise-hucs.py) ---
 EPT_REQUESTS = 3
@@ -204,12 +249,19 @@ def generate_tasks(
     gpkg_pattern: str,
     huc_ids: Optional[List[str]] = None,
     osm_ids: Optional[List[str]] = None,
-) -> List[tuple]:
-    """Build (bridge, source) task tuples for all matching HUCs."""
+) -> tuple[List[tuple], int]:
+    """Build (bridge, source) task tuples for all matching HUCs.
+
+    Returns:
+        Tuple of (task_list, no_source_count) where no_source_count is the
+        number of bridges that had zero intersecting lidar sources.
+    """
     lidar_gdf = load_lidar_index(lidar_resources_path)
     print(f"Loaded {len(lidar_gdf)} lidar sources from {lidar_resources_path}")
 
     tasks: List[tuple] = []
+    no_source_count = 0
+    total_bridges = 0
     huc_dirs = sorted(p for p in hucs_dir.iterdir() if p.is_dir())
 
     for huc_dir in huc_dirs:
@@ -233,16 +285,26 @@ def generate_tasks(
             gdf = gdf[gdf['osmid'].isin(osm_ids_str)]
 
         for _, row in gdf.iterrows():
+            total_bridges += 1
             osmid = row['osmid']
             geom = row.geometry
             sources = find_intersecting_sources(lidar_gdf, geom, buffer_meters)
+            if not sources:
+                no_source_count += 1
+                if logger:
+                    logger.info(f"[{huc_id}] OSM ID {osmid}: no intersecting lidar sources")
+                continue
             for src in sources:
                 tasks.append((
                     huc_id, osmid, geom.wkt, src['url'], src['name'],
                     buffer_meters, str(output_dir),
                 ))
 
-    return tasks
+    if logger:
+        logger.info(f"Task generation: {total_bridges} bridges scanned, "
+                     f"{no_source_count} have no lidar sources, {len(tasks)} tasks created")
+
+    return tasks, no_source_count
 
 
 # ---------------------------------------------------------------------------
@@ -273,9 +335,16 @@ def main() -> None:
     parser.add_argument('--shuffle-seed', type=int, default=None,
                         help='Seed for task shuffle order (default: random)')
     parser.add_argument('--no-progress', action='store_true', help='Disable progress bar')
+    parser.add_argument('--log-dir', default='./logs',
+                        help='Directory for log files (default: ./logs)')
     args = parser.parse_args()
 
+    # Set up logging
+    setup_logging(args.log_dir)
+
     print(f"Running with args: {args}")
+    if logger:
+        logger.info(f"Args: {args}")
 
     hucs_dir = Path(args.hucs_dir)
     output_dir = Path(args.output_dir)
@@ -283,7 +352,7 @@ def main() -> None:
     workers = args.workers or multiprocessing.cpu_count()
 
     print(f"Generating tasks from {hucs_dir} (pattern: {args.gpkg_pattern})...")
-    tasks = generate_tasks(
+    tasks, no_source_count = generate_tasks(
         hucs_dir=hucs_dir,
         lidar_resources_path=args.lidar_resources,
         output_dir=output_dir,
@@ -292,7 +361,7 @@ def main() -> None:
         huc_ids=args.hucs,
         osm_ids=args.osm_ids,
     )
-    print(f"Generated {len(tasks)} tasks")
+    print(f"Generated {len(tasks)} tasks ({no_source_count} bridges had no lidar sources)")
 
     if not tasks:
         print("Nothing to do.")
@@ -306,7 +375,10 @@ def main() -> None:
             if not _output_path(output_dir, t[0], t[1], t[4]).exists()
             and not _no_points_path(output_dir, t[0], t[1], t[4]).exists()
         ]
-        print(f"Skipped {before - len(tasks)} existing, {len(tasks)} remaining")
+        skipped_existing = before - len(tasks)
+        print(f"Skipped {skipped_existing} existing, {len(tasks)} remaining")
+        if logger:
+            logger.info(f"Skipped {skipped_existing} existing tasks, {len(tasks)} remaining")
 
     if not tasks:
         print("All tasks already processed.")
@@ -319,6 +391,9 @@ def main() -> None:
 
     # Process
     print(f"Downloading with {workers} workers...")
+    if logger:
+        logger.info(f"Starting download with {workers} workers, {len(tasks)} tasks")
+
     results: List[Dict[str, Any]] = []
     with multiprocessing.Pool(processes=workers, maxtasksperchild=50) as pool:
         iterator = pool.imap(download_one_bridge, tasks)
@@ -326,6 +401,16 @@ def main() -> None:
             iterator = tqdm(iterator, total=len(tasks), desc="Downloading bridges")
         for r in iterator:
             results.append(r)
+            # Log each result
+            if logger:
+                if r.get('skipped'):
+                    logger.info(f"[{r['huc_id']}] OSM ID {r['osmid']} / {r['source_name']}: skipped (already exists)")
+                elif r['success']:
+                    logger.info(f"[{r['huc_id']}] OSM ID {r['osmid']} / {r['source_name']}: downloaded ({r['points']} points)")
+                elif r.get('error') == 'No points found':
+                    logger.info(f"[{r['huc_id']}] OSM ID {r['osmid']} / {r['source_name']}: no points found (sentinel written)")
+                else:
+                    logger.error(f"[{r['huc_id']}] OSM ID {r['osmid']} / {r['source_name']}: {r['error']}")
 
     # Summary
     success = sum(1 for r in results if r['success'])
@@ -334,24 +419,37 @@ def main() -> None:
     no_points = sum(1 for r in results if r.get('error') == 'No points found')
     total_points = sum(r.get('points', 0) for r in results)
 
-    print(f"\n{'='*40}")
-    print(f"Download Summary")
-    print(f"{'='*40}")
-    print(f"Total tasks:    {len(results)}")
-    print(f"Successful:     {success}")
-    print(f"  (skipped):    {skipped}")
-    print(f"Failed:         {failed}")
-    print(f"  (no points):  {no_points}")
-    print(f"Total points:   {total_points:,}")
-    print(f"Output dir:     {output_dir.resolve()}")
+    summary = (
+        f"\n{'='*40}\n"
+        f"Download Summary\n"
+        f"{'='*40}\n"
+        f"Total tasks:         {len(results)}\n"
+        f"Successful:          {success}\n"
+        f"  (skipped):         {skipped}\n"
+        f"Failed:              {failed}\n"
+        f"  (no points):       {no_points}\n"
+        f"No lidar sources:    {no_source_count}\n"
+        f"Total points:        {total_points:,}\n"
+        f"Output dir:          {output_dir.resolve()}"
+    )
+    print(summary)
+    if logger:
+        logger.info(summary)
 
     errors = [r for r in results if not r['success'] and r.get('error') != 'No points found']
     if errors:
         print(f"\nErrors:")
         for e in errors[:10]:
-            print(f"  {e['huc_id']}/{e['osmid']}/{e['source_name']}: {e['error']}")
+            msg = f"  {e['huc_id']}/{e['osmid']}/{e['source_name']}: {e['error']}"
+            print(msg)
         if len(errors) > 10:
-            print(f"  ... and {len(errors) - 10} more")
+            print(f"  ... and {len(errors) - 10} more (see log file for full list)")
+        # Log all errors
+        if logger:
+            logger.error(f"{'='*40}")
+            logger.error(f"Error Summary ({len(errors)} errors)")
+            for e in errors:
+                logger.error(f"[{e['huc_id']}] OSM ID {e['osmid']} / {e['source_name']}: {e['error']}")
 
     if failed > 0 and failed != no_points:
         sys.exit(1)
