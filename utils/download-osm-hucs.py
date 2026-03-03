@@ -37,6 +37,8 @@ class BridgeStats(TypedDict):
     total_bridges: int
     lidar_bridges: int
     hucs_with_lidar: int
+    not_lidar_bridges: int
+    hucs_with_not_lidar: int
 
 
 class HUCResult(TypedDict):
@@ -47,6 +49,8 @@ class HUCResult(TypedDict):
     total_bridges: int
     lidar_bridges: int
     hucs_with_lidar: int
+    not_lidar_bridges: int
+    hucs_with_not_lidar: int
     huc_id: str
     error: str | None
 
@@ -67,10 +71,10 @@ def _process_one_huc(work_item: tuple[str, str, str, str | None, str | None, str
         huc_prefix,
         output_dir,
         profile_name,
-        target_filename,
+        save_subsets,
     ) = work_item
     huc_id = huc_prefix.rstrip('/').split('/')[-1]
-    s3_key = f"{huc_prefix}{target_filename}"
+    s3_key = f"{huc_prefix}osm_bridges_subset__{huc_id}.gpkg"
 
     empty: HUCResult = {
         'processed': 0,
@@ -78,6 +82,8 @@ def _process_one_huc(work_item: tuple[str, str, str, str | None, str | None, str
         'total_bridges': 0,
         'lidar_bridges': 0,
         'hucs_with_lidar': 0,
+        'not_lidar_bridges': 0,
+        'hucs_with_not_lidar': 0,
         'huc_id': huc_id,
         'error': None,
     }
@@ -101,20 +107,27 @@ def _process_one_huc(work_item: tuple[str, str, str, str | None, str | None, str
 
     num_bridges = len(gdf)
     num_lidar = 0
+    num_not_lidar = 0
     if 'has_lidar_tif' in gdf.columns:
         lidar_gdf = gdf[gdf['has_lidar_tif'] == 'Y']
+        not_lidar_gdf = gdf[gdf['has_lidar_tif'] == 'N']
         num_lidar = len(lidar_gdf)
+        num_not_lidar = len(not_lidar_gdf)
     else:
         lidar_gdf = gpd.GeoDataFrame()
+        not_lidar_gdf = gpd.GeoDataFrame()
 
     if output_dir:
         huc_dir = os.path.join(output_dir, huc_id)
         os.makedirs(huc_dir, exist_ok=True)
         local_original = os.path.join(huc_dir, f"osm_bridges_subset__{huc_id}.gpkg")
         local_filtered = os.path.join(huc_dir, f"osm_bridges_lidar_subset__{huc_id}.gpkg")
+        local_not_lidar = os.path.join(huc_dir, f"osm_bridges_not_lidar_subset__{huc_id}.gpkg")
         gdf.to_file(local_original, driver="GPKG")
-        if not lidar_gdf.empty:
+        if save_subsets in ('lidar', 'both') and not lidar_gdf.empty:
             lidar_gdf.to_file(local_filtered, driver="GPKG")
+        if save_subsets in ('not_lidar', 'both') and not not_lidar_gdf.empty:
+            not_lidar_gdf.to_file(local_not_lidar, driver="GPKG")
 
     return {
         'processed': 1,
@@ -122,6 +135,8 @@ def _process_one_huc(work_item: tuple[str, str, str, str | None, str | None, str
         'total_bridges': num_bridges,
         'lidar_bridges': num_lidar,
         'hucs_with_lidar': 1 if num_lidar > 0 else 0,
+        'not_lidar_bridges': num_not_lidar,
+        'hucs_with_not_lidar': 1 if num_not_lidar > 0 else 0,
         'huc_id': huc_id,
         'error': None,
     }
@@ -135,11 +150,12 @@ def process_bridge_files(
     scan_all: bool = False,
     limit: int = 100,
     workers: int = 1,
+    save_subsets: str = "both",
 ) -> None:
     """
     Download or list OSM bridge subset GeoPackages by HUC from S3 (parallel).
 
-    For each HUC prefix under base_prefix, fetches osm_bridges_subset.gpkg,
+    For each HUC prefix under base_prefix, fetches osm_bridges_subset__{huc_id}.gpkg,
     optionally filters by has_lidar_tif, and either saves to output_dir or
     prints counts (info-only mode when output_dir is None). Uses a process
     pool to process HUCs in parallel.
@@ -152,6 +168,9 @@ def process_bridge_files(
         scan_all: If True, process all HUCs; otherwise respect limit.
         limit: Max HUCs to process when scan_all is False.
         workers: Number of worker processes (default from CPU count; capped at 64).
+        save_subsets: Which filtered subsets to save in DOWNLOAD mode: 'lidar' (has_lidar_tif=='Y'),
+            'not_lidar' ('N'), or 'both' (default). Only affects which subset GPKGs are written;
+            the full osm_bridges_subset__{huc_id}.gpkg is always saved when output_dir is set.
 
     Returns:
         None.
@@ -217,11 +236,12 @@ def process_bridge_files(
         'total_bridges': 0,
         'lidar_bridges': 0,
         'hucs_with_lidar': 0,
+        'not_lidar_bridges': 0,
+        'hucs_with_not_lidar': 0,
     }
 
-    target_filename = "osm_bridges_subset.gpkg"
     work_items: list[tuple[str, str, str, str | None, str | None, str]] = [
-        (bucket_name, base_prefix, huc_prefix, output_dir, profile_name, target_filename)
+        (bucket_name, base_prefix, huc_prefix, output_dir, profile_name, save_subsets)
         for huc_prefix in huc_prefixes
     ]
 
@@ -242,6 +262,8 @@ def process_bridge_files(
                 stats['total_bridges'] += result['total_bridges']
                 stats['lidar_bridges'] += result['lidar_bridges']
                 stats['hucs_with_lidar'] += result['hucs_with_lidar']
+                stats['not_lidar_bridges'] += result['not_lidar_bridges']
+                stats['hucs_with_not_lidar'] += result['hucs_with_not_lidar']
                 if result['error'] is not None:
                     print(f"Error on HUC {result['huc_id']}: {result['error']}")
                 done += 1
@@ -256,7 +278,7 @@ def process_bridge_files(
                 if r['skipped_missing']:
                     print(f"HUC {r['huc_id']}: File not found")
                 else:
-                    print(f"HUC {r['huc_id']}: {r['total_bridges']} bridges found | {r['lidar_bridges']} have Lidar")
+                    print(f"HUC {r['huc_id']}: {r['total_bridges']} bridges | {r['lidar_bridges']} have Lidar | {r['not_lidar_bridges']} not Lidar")
 
     # 4. Final Summary
     print("\n" + "="*30)
@@ -266,14 +288,19 @@ def process_bridge_files(
     print(f"HUCs Processed:       {stats['processed']}")
     print(f"HUCs Missing File:    {stats['skipped_missing']}")
     print("-" * 30)
-    print(f"Total Bridges Found:  {stats['total_bridges']}")
-    print(f"Total Lidar Bridges:  {stats['lidar_bridges']}")
+    print(f"Total Bridges Found:   {stats['total_bridges']}")
+    print(f"Total Lidar Bridges:   {stats['lidar_bridges']}")
     print(f"HUCs containing Lidar:{stats['hucs_with_lidar']}")
+    print(f"Total Not-Lidar Bridges:{stats['not_lidar_bridges']}")
+    print(f"HUCs with Not-Lidar:   {stats['hucs_with_not_lidar']}")
 
     if output_dir:
         print("-" * 30)
         print(f"Data saved to: {os.path.abspath(output_dir)}")
         print("Structure: {dir}/{huc_id}/osm_bridges_subset__{huc_id}.gpkg")
+        print("           {dir}/{huc_id}/osm_bridges_lidar_subset__{huc_id}.gpkg")
+        print("           {dir}/{huc_id}/osm_bridges_not_lidar_subset__{huc_id}.gpkg")
+        print("           (lidar/not_lidar written per --save-subsets)")
 
 if __name__ == "__main__":
     multiprocessing.set_start_method('spawn', force=True)
@@ -302,6 +329,10 @@ if __name__ == "__main__":
     parser.add_argument('--workers', type=int, default=None,
                         help='Number of worker processes (default: min(32, cpu_count + 4))')
 
+    parser.add_argument('--save-subsets', type=str, choices=['lidar', 'not_lidar', 'both'],
+                        default='both',
+                        help="Which filtered subsets to save: lidar (has_lidar_tif=='Y'), not_lidar ('N'), or both (default).")
+
     args = parser.parse_args()
 
     workers = args.workers
@@ -316,13 +347,14 @@ if __name__ == "__main__":
         scan_all=args.all,
         limit=args.limit,
         workers=workers,
+        save_subsets=args.save_subsets,
     )
 
 
 # Example usage:
 # Info/dry run mode:
-#   python utils/download-osm-hucs.py --profile esip --limit 100
+#   python utils/download-osm-hucs.py --profile esip --limit 100 --save-subsets lidar
 # Download mode (limit 100 HUCs):
-#   python utils/download-osm-hucs.py --profile esip --dir ./data/osm/hucs --limit 100
-# Download mode (all HUCs):
-#   python utils/download-osm-hucs.py --profile esip --dir ./data/osm/hucs --all
+#   python utils/download-osm-hucs.py --profile esip --dir ./data/osm/hucs --limit 100 --save-subsets lidar
+# Download mode (all HUCs): (use trailing slash in prefix)
+#   python utils/download-osm-hucs.py --profile esip --dir ./data/osm/hucs --all --bucket fimc-data --prefix bridge-classification/osm/hucs/ --save-subsets not_lidar
