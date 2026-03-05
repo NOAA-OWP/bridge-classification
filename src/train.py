@@ -148,11 +148,11 @@ class BridgeDataset(Dataset):
     points within voxels using majority vote for labels and averaging for features.
     """
 
-    def __init__(self, data_dir: str, voxel_size: float = 0.05, augment: bool = False, max_voxels: Optional[int] = None):
+    def __init__(self, data_dir: str, voxel_size: float = 0.1, augment: bool = False, max_voxels: Optional[int] = None):
         """
         Args:
             data_dir: Path to directory containing .npy files (can be HUC-organized)
-            voxel_size: Voxel size in meters (e.g., 0.05 for 5cm)
+            voxel_size: Voxel size in meters (e.g., 0.1 for 10cm)
             augment: Whether to apply random rotations/scaling
             max_voxels: Maximum voxels per sample; randomly subsample if exceeded (default: None = no limit)
         """
@@ -484,7 +484,7 @@ if HAS_LIGHTNING:
             self,
             train_dir: str,
             val_dir: Optional[str] = None,
-            voxel_size: float = 0.05,
+            voxel_size: float = 0.1,
             batch_size: int = 4,
             num_workers: int = 4,
             augment: bool = True,
@@ -495,7 +495,7 @@ if HAS_LIGHTNING:
             Args:
                 train_dir: Path to directory containing training .npy files
                 val_dir: Path to directory containing validation .npy files; if None, use val_split on train_dir
-                voxel_size: Voxel size in meters (default: 0.05)
+                voxel_size: Voxel size in meters (default: 0.1)
                 batch_size: Batch size (default: 4)
                 num_workers: Number of data loader workers (default: 4)
                 augment: Whether to apply augmentation (default: True)
@@ -670,7 +670,7 @@ def save_network_graph(model, save_dir, filename="network_architecture"):
         torch.cuda.empty_cache()
 
 
-def visualize_voxelization(data_dir: str, sample_idx: int = 0, voxel_size: float = 0.05):
+def visualize_voxelization(data_dir: str, sample_idx: int = 0, voxel_size: float = 0.1):
     """
     Visualize original vs voxelized point cloud for a sample bridge.
 
@@ -830,8 +830,8 @@ def main():
     parser.add_argument(
         '--voxel-size',
         type=float,
-        default=0.05,
-        help='Voxel size in meters (default: 0.05 = 5cm)'
+        default=0.1,
+        help='Voxel size in meters (default: 0.1 = 10cm)'
     )
 
     parser.add_argument(

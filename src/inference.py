@@ -158,14 +158,14 @@ def load_model(checkpoint_path, device):
     return model
 
 
-def run_inference(model, input_path, output_path, voxel_size=0.05, device=torch.device("cpu")):
+def run_inference(model, input_path, output_path, voxel_size=0.1, device=torch.device("cpu")):
     """Run inference on a single LAS/LAZ file and save the classified result.
 
     Args:
         model: Pre-loaded SparseUNet model (already on device, in eval mode).
         input_path: Path to input LAS/LAZ file.
         output_path: Path to write classified LAS/LAZ file.
-        voxel_size: Voxel size in meters (must match training). Default: 0.05.
+        voxel_size: Voxel size in meters (must match training). Default: 0.1.
         device: Device the model is on. Default: cpu.
 
     Returns:
@@ -272,7 +272,7 @@ def parse_pairs_file(filepath):
     return pairs
 
 
-def run_batch_inference(model, pairs, voxel_size=0.05, device=torch.device("cpu"), bridge_timeout=150):
+def run_batch_inference(model, pairs, voxel_size=0.1, device=torch.device("cpu"), bridge_timeout=150):
     """Run inference on multiple input/output file pairs.
 
     Processes each pair sequentially, continuing on failure so one bad file
@@ -285,7 +285,7 @@ def run_batch_inference(model, pairs, voxel_size=0.05, device=torch.device("cpu"
     Args:
         model: Pre-loaded SparseUNet model (already on device, in eval mode).
         pairs: List of (input_path, output_path) tuples.
-        voxel_size: Voxel size in meters. Default: 0.05.
+        voxel_size: Voxel size in meters. Default: 0.1.
         device: Device the model is on. Default: cpu.
         bridge_timeout: Seconds before a hung bridge is skipped. Default: 150.
 
@@ -325,7 +325,7 @@ def main():
     parser.add_argument('--pairs-file', type=str, default=None,
                         help='TSV file with input<TAB>output pairs (batch mode)')
     parser.add_argument('--model', type=str, required=True, help='Path to .pth/.ckpt checkpoint')
-    parser.add_argument('--voxel-size', type=float, default=0.05, help='Voxel size (must match training)')
+    parser.add_argument('--voxel-size', type=float, default=0.1, help='Voxel size (must match training)')
     parser.add_argument('--gpu', action='store_true', help='Force use of GPU')
     parser.add_argument('--bridge-timeout', type=float, default=150,
                         help='Seconds before a hung bridge is skipped in batch mode (default: 150, supports decimals)')

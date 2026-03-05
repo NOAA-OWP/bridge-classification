@@ -130,7 +130,7 @@ Training pipeline with voxelization, data loading, and PyTorch Lightning integra
 | `--train-dir` | `./data/ml-data/training` | Training data directory |
 | `--val-dir` | None | Validation directory; if unset, uses `--val-split` |
 | `--val-split` | 0.0 | Fraction of training data to use as validation (0 = none) |
-| `--voxel-size` | 0.05 | Voxel size in meters |
+| `--voxel-size` | 0.1 | Voxel size in meters |
 | `--max-voxels` | None | Max voxels per sample; subsampled if exceeded (OOM prevention) |
 | `--batch-size` | 16 | Batch size |
 | `--augment` | False | Enable random Z-rotation + jitter |
@@ -179,7 +179,7 @@ Loads a trained checkpoint, classifies a raw LAZ file, and writes a classified L
 | `--input` | *(required)* | Input LAS/LAZ file path |
 | `--output` | *(required)* | Output LAS/LAZ file path |
 | `--model` | *(required)* | Path to `.ckpt` checkpoint |
-| `--voxel-size` | 0.05 | Voxel size (must match training) |
+| `--voxel-size` | 0.1 | Voxel size (must match training) |
 | `--gpu` | False | Force GPU use |
 
 ---

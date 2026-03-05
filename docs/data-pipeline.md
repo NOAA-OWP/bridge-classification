@@ -188,7 +188,7 @@ training/**/*.npy
 | Model output | (ΣM, 4) | float32 | Per-voxel logits for 4 classes |
 | After `argmax` | (ΣM,) | int64 | Predicted class per voxel |
 
-**Voxel size**: 0.05 m (5 cm) default, 0.10 m (10 cm) used in practice for larger datasets.
+**Voxel size**: 0.1 m (10 cm) default used in practice for larger datasets.
 
 ---
 

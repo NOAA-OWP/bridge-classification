@@ -102,7 +102,7 @@ class SparseUNet(nn.Module):
             base_channels: Base number of channels (default: 16)
         """
         super().__init__()
-        self.sparse_shape = [4096, 4096, 1024]  # Max grid size (adjust based on max bridge size / 0.05)
+        self.sparse_shape = [4096, 4096, 1024]  # Max grid size (adjust based on max bridge size / 0.1)
 
         norm_fn = functools.partial(nn.BatchNorm1d, eps=1e-3, momentum=0.01)
 
