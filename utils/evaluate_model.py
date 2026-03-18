@@ -7,17 +7,17 @@ allowing comparison of model performance vs. the weak supervision labels.
 
 Usage:
     # Full evaluation (runs inference + computes silver baseline)
-    python utils/evaluate_model.py \\
-        --model ./experiments/.../checkpoints/best.ckpt \\
-        --gold-dir ./data/ml-data/gold-data \\
-        --test-dir ./data/ml-data/testing \\
+    python utils/evaluate_model.py \
+        --model ./experiments/.../checkpoints/best.ckpt \
+        --gold-dir ./data/ml-data/gold-data \
+        --test-dir ./data/ml-data/testing \
         --output-dir ./evaluation_results
 
     # Pre-computed inference (skip re-running model)
-    python utils/evaluate_model.py \\
-        --gold-dir ./data/ml-data/gold-data \\
-        --test-dir ./data/ml-data/testing \\
-        --inference-dir ./evaluation_results/inference_output \\
+    python utils/evaluate_model.py \
+        --gold-dir ./data/ml-data/gold-data \
+        --test-dir ./data/ml-data/testing \
+        --inference-dir ./evaluation_results/inference_output \
         --output-dir ./evaluation_results
 """
 
@@ -84,6 +84,7 @@ except ImportError:
     HAS_TQDM = False
 
 NUM_CLASSES = 4
+BRIDGE_DECK_CLASS = 2  # class index for Bridge Deck in model output
 CLASS_NAMES = {
     0: "Background",
     1: "Ground/Water",
@@ -219,20 +220,34 @@ def evaluate_bridge(gold_labels: np.ndarray, pred_labels: np.ndarray) -> dict:
             "support": int(support[c]),
         }
 
+    # Binary (bridge vs non-bridge) metrics
+    binary_gold = (gold_labels == BRIDGE_DECK_CLASS).astype(np.int32)
+    binary_pred = (pred_labels == BRIDGE_DECK_CLASS).astype(np.int32)
+    binary_cm = sk_confusion_matrix(binary_gold, binary_pred, labels=[0, 1])
+    b_iou = _iou_from_cm(binary_cm)
+    b_prec, b_rec, b_f1, _ = _pr_from_cm(binary_cm)
+    binary = {
+        "precision": float(b_prec[1] * 100),
+        "recall": float(b_rec[1] * 100),
+        "f1": float(b_f1[1] * 100),
+        "iou": float(b_iou[1] * 100),
+        "confusion_matrix": binary_cm,
+    }
+
     return {
         "confusion_matrix": cm,
         "per_class": per_class,
         "overall_accuracy": overall_acc,
         "mean_iou": mean_iou,
         "num_points": int(len(gold_labels)),
+        "binary": binary,
     }
 
 
 def aggregate_metrics(bridge_results: list) -> dict:
-    """Aggregate per-bridge results into micro and macro averages.
+    """Aggregate per-bridge results into micro-averaged metrics.
 
-    Micro: computed from the global summed confusion matrix (point-weighted).
-    Macro: mean/std of per-bridge metrics (bridge-weighted).
+    Computed from the global summed confusion matrix (point-weighted).
     """
     if not bridge_results:
         return {}
@@ -256,17 +271,26 @@ def aggregate_metrics(bridge_results: list) -> dict:
             "support": int(support[c]),
         }
 
-    # Macro stats across bridges
-    macro = {}
-    for c in range(NUM_CLASSES):
-        for metric in ("precision", "recall", "f1", "iou"):
-            vals = [r["per_class"][c][metric] for r in bridge_results]
-            macro[f"class_{c}_{metric}_mean"] = float(np.mean(vals))
-            macro[f"class_{c}_{metric}_std"] = float(np.std(vals))
-    for key, metric in [("overall_accuracy", "overall_accuracy"), ("mean_iou", "mean_iou")]:
-        vals = [r[metric] for r in bridge_results]
-        macro[f"{key}_mean"] = float(np.mean(vals))
-        macro[f"{key}_std"] = float(np.std(vals))
+    # Aggregate binary metrics
+    global_binary_cm = sum(r["binary"]["confusion_matrix"] for r in bridge_results)
+    b_iou = _iou_from_cm(global_binary_cm)
+    b_prec, b_rec, b_f1, _ = _pr_from_cm(global_binary_cm)
+    binary = {
+        "precision": float(b_prec[1] * 100),
+        "recall": float(b_rec[1] * 100),
+        "f1": float(b_f1[1] * 100),
+        "iou": float(b_iou[1] * 100),
+    }
+    binary_nonbridge = {
+        "precision": float(b_prec[0] * 100),
+        "recall": float(b_rec[0] * 100),
+        "f1": float(b_f1[0] * 100),
+        "iou": float(b_iou[0] * 100),
+    }
+    b_tp = global_binary_cm[1, 1]
+    b_tn = global_binary_cm[0, 0]
+    binary_total = int(global_binary_cm.sum())
+    binary_accuracy = float((b_tp + b_tn) / binary_total * 100) if binary_total > 0 else 0.0
 
     return {
         "total_bridges": len(bridge_results),
@@ -275,7 +299,9 @@ def aggregate_metrics(bridge_results: list) -> dict:
         "mean_iou": mean_iou,
         "per_class": per_class,
         "confusion_matrix": global_cm.tolist(),
-        "macro": macro,
+        "binary": binary,
+        "binary_nonbridge": binary_nonbridge,
+        "binary_accuracy": binary_accuracy,
     }
 
 
@@ -296,7 +322,7 @@ def print_summary_table(aggregate: dict, label: str = "Model Predictions"):
     for c in range(NUM_CLASSES):
         m = aggregate["per_class"][c]
         name = f"{c}: {CLASS_NAMES[c]}"
-        marker = " *" if c == 2 else "  "
+        marker = " *" if c == BRIDGE_DECK_CLASS else "  "
         print(
             f" {name:<26}{marker}"
             f" {m['precision']:>6.1f}%"
@@ -308,9 +334,79 @@ def print_summary_table(aggregate: dict, label: str = "Model Predictions"):
     print(f" {'-' * 70}")
     print(f" Overall Accuracy: {aggregate['overall_accuracy']:.1f}%   |   "
           f"Mean IoU: {aggregate['mean_iou']:.1f}%")
-    print(f" Bridge Deck IoU: {aggregate['per_class'][2]['iou']:.1f}%  "
-          f"  Bridge Deck Recall: {aggregate['per_class'][2]['recall']:.1f}%")
+    print(f" Bridge Deck IoU: {aggregate['per_class'][BRIDGE_DECK_CLASS]['iou']:.1f}%  "
+          f"  Bridge Deck Recall: {aggregate['per_class'][BRIDGE_DECK_CLASS]['recall']:.1f}%")
     print("=" * 72)
+
+
+def print_comparison_table(model_agg: dict, silver_agg: dict):
+    """Print a side-by-side comparison table with delta (model - silver)."""
+    if not model_agg or not silver_agg:
+        return
+    W = 84
+    print()
+    print("=" * W)
+    print(" Model vs Silver Baseline — Comparison (Delta = Model - Silver)")
+    print("=" * W)
+    print(f" {'Class':<26}  {'Model IoU':>10} {'Silver IoU':>11} {'Delta':>8}")
+    print(f" {'-' * 82}")
+    for c in range(NUM_CLASSES):
+        m_iou = model_agg["per_class"][c]["iou"]
+        s_iou = silver_agg["per_class"][c]["iou"]
+        delta = m_iou - s_iou
+        sign = "+" if delta >= 0 else ""
+        name = f"{c}: {CLASS_NAMES[c]}"
+        marker = " *" if c == BRIDGE_DECK_CLASS else "  "
+        print(f" {name:<26}{marker}  {m_iou:>9.1f}%  {s_iou:>10.1f}%  {sign}{delta:>6.1f}%")
+    print(f" {'-' * 82}")
+    m_oa = model_agg["overall_accuracy"]
+    s_oa = silver_agg["overall_accuracy"]
+    d_oa = m_oa - s_oa
+    m_mi = model_agg["mean_iou"]
+    s_mi = silver_agg["mean_iou"]
+    d_mi = m_mi - s_mi
+    print(f" {'Overall Accuracy':<30}  {m_oa:>9.1f}%  {s_oa:>10.1f}%  {'+' if d_oa >= 0 else ''}{d_oa:>6.1f}%")
+    print(f" {'Mean IoU':<30}  {m_mi:>9.1f}%  {s_mi:>10.1f}%  {'+' if d_mi >= 0 else ''}{d_mi:>6.1f}%")
+    print("=" * W)
+
+
+def print_binary_table(model_agg: dict, silver_agg: dict):
+    """Print binary (bridge vs non-bridge) metrics for model and silver.
+
+    Shows both bridge and non-bridge class metrics plus binary overall accuracy.
+    The non-bridge metrics and binary accuracy are the key value here — they
+    show a cleaner picture than 4-class overall accuracy for presentation.
+    """
+    W = 84
+    print()
+    print("=" * W)
+    print(" Binary Metrics — Bridge vs Non-Bridge")
+    print("=" * W)
+    print(f" {'Source':<20} {'Class':<14} {'Prec':>9} {'Rec':>9} {'F1':>9} {'IoU':>9}")
+    print(f" {'-' * 82}")
+    for label, agg in [("Model", model_agg), ("Silver Baseline", silver_agg)]:
+        if not agg or "binary" not in agg:
+            continue
+        b = agg["binary"]
+        nb = agg["binary_nonbridge"]
+        print(f" {label:<20} {'Bridge':<14} {b['precision']:>8.1f}% {b['recall']:>8.1f}% {b['f1']:>8.1f}% {b['iou']:>8.1f}%")
+        print(f" {'':<20} {'Non-Bridge':<14} {nb['precision']:>8.1f}% {nb['recall']:>8.1f}% {nb['f1']:>8.1f}% {nb['iou']:>8.1f}%")
+        print(f" {'':<20} {'Binary Acc':<14} {agg['binary_accuracy']:>8.1f}%")
+        print(f" {'-' * 82}")
+    if model_agg and silver_agg and "binary" in model_agg and "binary" in silver_agg:
+        mb = model_agg["binary"]
+        sb = silver_agg["binary"]
+        d_iou = mb["iou"] - sb["iou"]
+        d_acc = model_agg["binary_accuracy"] - silver_agg["binary_accuracy"]
+        mnb = model_agg["binary_nonbridge"]
+        snb = silver_agg["binary_nonbridge"]
+        d_nb_iou = mnb["iou"] - snb["iou"]
+        sign_i = "+" if d_iou >= 0 else ""
+        sign_a = "+" if d_acc >= 0 else ""
+        sign_nb = "+" if d_nb_iou >= 0 else ""
+        print(f" Delta: Bridge IoU {sign_i}{d_iou:.1f}%  |  Non-Bridge IoU {sign_nb}{d_nb_iou:.1f}%"
+              f"  |  Binary Acc {sign_a}{d_acc:.1f}%")
+    print("=" * W)
 
 
 def _to_serializable(obj):
@@ -354,6 +450,10 @@ def save_outputs(model_agg: dict, silver_agg: dict, bridge_results: list,
                     pc = result["per_class"].get(c, {})
                     for metric in ("precision", "recall", "f1", "iou", "support"):
                         row[f"class_{c}_{metric}"] = pc.get(metric)
+                # Binary metrics
+                binary = result.get("binary", {})
+                for metric in ("precision", "recall", "f1", "iou"):
+                    row[f"binary_{metric}"] = binary.get(metric)
                 rows.append(row)
         csv_path = output_dir / "per_bridge_metrics.csv"
         pd.DataFrame(rows).to_csv(csv_path, index=False)
@@ -378,7 +478,7 @@ def save_outputs(model_agg: dict, silver_agg: dict, bridge_results: list,
             print("Warning: matplotlib/seaborn not installed, skipping plot.")
         return
 
-    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+    _, axes = plt.subplots(1, 2, figsize=(16, 6))
     class_labels = [f"{c}: {CLASS_NAMES[c]}" for c in range(NUM_CLASSES)]
 
     for ax, agg, title in [
@@ -399,13 +499,72 @@ def save_outputs(model_agg: dict, silver_agg: dict, bridge_results: list,
         ax.set_title(title)
         ax.set_ylabel("True Label")
         ax.set_xlabel("Predicted Label")
+        ax.set_yticklabels(ax.get_yticklabels(), rotation=0, va="center")
 
+    # row-normalized confusion matrix
     plt.suptitle("Bridge Classification — Confusion Matrices (row-normalized)", fontsize=13)
     plt.tight_layout()
     png_path = output_dir / "confusion_matrix.png"
     plt.savefig(png_path, dpi=150, bbox_inches="tight")
     plt.close()
     print(f"Saved confusion matrix: {png_path}")
+
+    # Binary confusion matrix (bridge vs non-bridge)
+    binary_labels = ["Non-Bridge", "Bridge"]
+    _, axes2 = plt.subplots(1, 2, figsize=(12, 5))
+    for ax, agg, title in [
+        (axes2[0], model_agg, "Model Predictions"),
+        (axes2[1], silver_agg, "Silver Baseline"),
+    ]:
+        if not agg:
+            ax.set_visible(False)
+            continue
+        # Collapse 4-class CM to binary: class 2 = Bridge, rest = Non-Bridge
+        cm4 = np.array(agg.get("confusion_matrix", np.zeros((NUM_CLASSES, NUM_CLASSES))))
+        tp = cm4[BRIDGE_DECK_CLASS, BRIDGE_DECK_CLASS]
+        fn = cm4[BRIDGE_DECK_CLASS, :].sum() - tp
+        fp = cm4[:, BRIDGE_DECK_CLASS].sum() - tp
+        tn = cm4.sum() - tp - fn - fp
+        bcm = np.array([[tn, fp], [fn, tp]])
+        row_sums = bcm.sum(axis=1, keepdims=True)
+        bcm_norm = np.where(row_sums > 0, bcm / row_sums * 100, 0.0)
+        sns.heatmap(
+            bcm_norm, ax=ax, annot=True, fmt=".1f", cmap="Blues",
+            xticklabels=binary_labels, yticklabels=binary_labels,
+            vmin=0, vmax=100, cbar_kws={"label": "Recall (%)"},
+        )
+        ax.set_title(title)
+        ax.set_ylabel("True Label")
+        ax.set_xlabel("Predicted Label")
+    plt.suptitle("Binary (Bridge vs Non-Bridge) — Confusion Matrices (row-normalized)", fontsize=13)
+    plt.tight_layout()
+    bin_png_path = output_dir / "confusion_matrix_binary.png"
+    plt.savefig(bin_png_path, dpi=150, bbox_inches="tight")
+    plt.close()
+    print(f"Saved binary CM:        {bin_png_path}")
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _load_and_evaluate(pred_path: Path, gold_labels: np.ndarray,
+                       bridge_id: str) -> tuple:
+    """Load predicted labels from file and evaluate against gold.
+
+    Returns (status, result) where status is 'ok', 'point_count_mismatch',
+    or 'load_error', and result is the evaluate_bridge dict or None.
+    """
+    try:
+        _, pred_labels = load_classifications(pred_path)
+        if len(pred_labels) != len(gold_labels):
+            print(f"WARN (bridge={bridge_id}): Model/gold point count mismatch "
+                  f"({len(pred_labels)} vs {len(gold_labels)})")
+            return "point_count_mismatch", None
+        return "ok", evaluate_bridge(gold_labels, pred_labels)
+    except Exception as e:
+        print(f"WARN (bridge={bridge_id}): Failed to load inference output: {e}")
+        return "load_error", None
 
 
 # ---------------------------------------------------------------------------
@@ -538,20 +697,8 @@ def main():
                     entry["model_status"] = "no_inference_file"
                     entry["model_result"] = None
                 else:
-                    try:
-                        _, pred_labels = load_classifications(pred_path)
-                        if len(pred_labels) != len(gold_labels):
-                            print(f"WARN (bridge={bridge_id}): Model/gold point count mismatch "
-                                  f"({len(pred_labels)} vs {len(gold_labels)})")
-                            entry["model_status"] = "point_count_mismatch"
-                            entry["model_result"] = None
-                        else:
-                            entry["model_result"] = evaluate_bridge(gold_labels, pred_labels)
-                            entry["model_status"] = "ok"
-                    except Exception as e:
-                        print(f"WARN (bridge={bridge_id}): Failed to load inference output: {e}")
-                        entry["model_status"] = "load_error"
-                        entry["model_result"] = None
+                    entry["model_status"], entry["model_result"] = \
+                        _load_and_evaluate(pred_path, gold_labels, bridge_id)
             else:
                 pred_path = inference_output_dir / huc_id / f"{stem}.laz"
                 pred_path.parent.mkdir(parents=True, exist_ok=True)
@@ -576,19 +723,8 @@ def main():
                         signal.setitimer(signal.ITIMER_REAL, 0)
 
                 if ok:
-                    try:
-                        _, pred_labels = load_classifications(pred_path)
-                        if len(pred_labels) != len(gold_labels):
-                            print(f"WARN (bridge={bridge_id}): Model/gold point count mismatch")
-                            entry["model_status"] = "point_count_mismatch"
-                            entry["model_result"] = None
-                        else:
-                            entry["model_result"] = evaluate_bridge(gold_labels, pred_labels)
-                            entry["model_status"] = "ok"
-                    except Exception as e:
-                        print(f"WARN (bridge={bridge_id}): Failed to load inference output: {e}")
-                        entry["model_status"] = "load_error"
-                        entry["model_result"] = None
+                    entry["model_status"], entry["model_result"] = \
+                        _load_and_evaluate(pred_path, gold_labels, bridge_id)
                 elif "model_status" not in entry:
                     entry["model_status"] = "inference_error"
                     entry["model_result"] = None
@@ -614,6 +750,11 @@ def main():
         print_summary_table(model_agg, label="Model Predictions")
     if silver_agg:
         print_summary_table(silver_agg, label="Silver Baseline")
+
+    # Comparison & binary tables
+    if model_agg and silver_agg:
+        print_comparison_table(model_agg, silver_agg)
+        print_binary_table(model_agg, silver_agg)
 
     # Skipped summary
     if skipped:
