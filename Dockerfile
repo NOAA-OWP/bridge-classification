@@ -21,9 +21,6 @@ ENV LD_LIBRARY_PATH="/opt/conda/lib:${LD_LIBRARY_PATH:-}"
 # Copy the source code into the container
 COPY --chown=$MAMBA_USER:$MAMBA_USER . .
 
-# Copy and Prep the Entrypoint Script
-COPY --chown=$MAMBA_USER:$MAMBA_USER scripts/batch_entrypoint.sh /app/batch_entrypoint.sh
-RUN chmod +x /app/batch_entrypoint.sh
-
 # Default command (Batch will override this, but good for testing)
-CMD ["/app/batch_entrypoint.sh"]
+# Source code (including scripts/batch_entrypoint.py) is already copied by COPY . . above
+CMD ["python", "/app/scripts/batch_entrypoint.py"]

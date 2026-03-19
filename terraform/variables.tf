@@ -105,7 +105,7 @@ variable "shared_memory_size" {
 variable "job_timeout_seconds" {
   description = "Max wall-clock seconds per array child before Batch kills it (prevents runaway GPU costs)"
   type        = number
-  default     = 7200 # 2 hours; each child processes ~60 files at ~1 min each
+  default     = 28800 # 8 hours; 150 bridges at ~150s each = ~6.25h, plus buffer for SPOT retries
 }
 
 # -----------------------------------------------------------------------------
@@ -134,4 +134,25 @@ variable "s3_model_uri" {
 variable "s3_output_prefix" {
   description = "S3 prefix for prediction outputs (no trailing slash)"
   type        = string
+}
+
+# -----------------------------------------------------------------------------
+# Inference Runtime
+# -----------------------------------------------------------------------------
+variable "inference_mode" {
+  description = "Inference mode: masked (default), raw, or both"
+  type        = string
+  default     = "masked"
+}
+
+variable "bridge_timeout" {
+  description = "Per-bridge timeout in seconds before skipping"
+  type        = number
+  default     = 150
+}
+
+variable "retry_attempts" {
+  description = "Number of retry attempts for SPOT interruptions"
+  type        = number
+  default     = 3
 }

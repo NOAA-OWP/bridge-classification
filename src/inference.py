@@ -13,17 +13,22 @@ Workflow:
    d. Map Voxel Labels -> Original Points.
    e. Save LAS file.
 
-Usage (single file):
+Usage (single file, masked mode — bridge deck overlaid on original lidar):
     python src/inference.py \
         --input ./data/ml-data/testing/02050206/bridge_10598181_....laz \
         --output ./data/ml-data/prediction.laz \
         --model ./experiments/bridge-base-v0/.../checkpoints/....ckpt \
         --gpu
 
+Usage (single file, raw mode — all model labels, old behavior):
+    python src/inference.py \
+        --input bridge.laz --output pred.laz --model model.ckpt --mode raw
+
 Usage (batch via pairs file):
     python src/inference.py \
         --pairs-file ./pairs.tsv \
         --model ./experiments/bridge-base-v0/.../checkpoints/....ckpt \
+        --mode masked \
         --gpu
 
     Where pairs.tsv has one tab-separated line per file:
@@ -33,12 +38,14 @@ Usage (batch via pairs file):
 
 import argparse
 import json
+import os
 import signal
-import torch
+import sys
+from pathlib import Path
+
 import numpy as np
 import pdal
-import sys
-import os
+import torch
 
 
 class BridgeTimeout(BaseException):
@@ -59,14 +66,41 @@ except ImportError:
     from model import SparseUNet
     import spconv.pytorch as spconv
 
+
 # --- CONFIGURATION ---
-# Map Model Classes (0-3) back to ASPRS LAS Codes
+MIN_POINT_COUNT = 100          # Files with fewer points are skipped
+SPATIAL_SHAPE_PADDING = 10     # Extra voxel buffer added to spconv spatial shape to avoid
+                               # out-of-bounds during strided/transposed conv operations
+
+# Model class -> ASPRS LAS code mappings
+BRIDGE_DECK_MODEL_CLASS = 2
+BRIDGE_DECK_ASPRS_CODE = 17
+OBSTACLES_MODEL_CLASS = 3
+OBSTACLES_ASPRS_CODE = 18
+
 MODEL_TO_LAS_MAP = {
-    0: 1,   # Background -> Unclassified
-    1: 2,   # Ground/Water -> Ground
-    2: 17,  # Bridge Deck -> Bridge Deck
-    3: 18   # Obstacles -> High Noise
+    0: 1,                          # Background  -> Unclassified
+    1: 2,                          # Ground/Water -> Ground
+    BRIDGE_DECK_MODEL_CLASS: BRIDGE_DECK_ASPRS_CODE,   # Bridge Deck -> Bridge Deck
+    OBSTACLES_MODEL_CLASS: OBSTACLES_ASPRS_CODE,       # Obstacles   -> High Noise
 }
+
+def apply_bridge_mask(original_classification, point_labels_model):
+    """Apply binary bridge deck mask: only reclassify model class 2 -> ASPRS 17.
+
+    All other points retain their original LiDAR classification unchanged.
+
+    Args:
+        original_classification: np.ndarray of original ASPRS codes from the LAS file.
+        point_labels_model: np.ndarray of model class predictions (0-3) per point.
+
+    Returns:
+        np.ndarray of merged classification codes (uint8).
+    """
+    merged = original_classification.copy()
+    merged[point_labels_model == BRIDGE_DECK_MODEL_CLASS] = BRIDGE_DECK_ASPRS_CODE
+    return merged
+
 
 def load_las(filepath):
     """Read LAS file and return XYZ + Intensity."""
@@ -97,6 +131,7 @@ def load_las(filepath):
         intensities /= intensities.max()
 
     return points, intensities, pipeline.metadata, arrays
+
 
 def save_las(output_path, original_arrays, labels, metadata):
     """Save the classified point cloud."""
@@ -158,7 +193,7 @@ def load_model(checkpoint_path, device):
     return model
 
 
-def run_inference(model, input_path, output_path, voxel_size=0.1, device=torch.device("cpu")):
+def run_inference(model, input_path, output_path, voxel_size=0.1, device=torch.device("cpu"), mode='masked'):
     """Run inference on a single LAS/LAZ file and save the classified result.
 
     Args:
@@ -167,6 +202,8 @@ def run_inference(model, input_path, output_path, voxel_size=0.1, device=torch.d
         output_path: Path to write classified LAS/LAZ file.
         voxel_size: Voxel size in meters (must match training). Default: 0.1.
         device: Device the model is on. Default: cpu.
+        mode: Output mode — 'masked' (bridge deck only, default), 'raw' (all model labels),
+              or 'both' (save raw to output_path and masked alongside it).
 
     Returns:
         True if inference succeeded, False if the file was skipped or failed.
@@ -176,7 +213,7 @@ def run_inference(model, input_path, output_path, voxel_size=0.1, device=torch.d
         print(f"Loading data: {input_path}")
         raw_xyz, raw_intensity, meta, original_arrays = load_las(input_path)
 
-        if len(raw_xyz) < 100:
+        if len(raw_xyz) < MIN_POINT_COUNT:
             print(f"WARN: {input_path} has < 100 points, skipping.")
             return False
 
@@ -211,7 +248,7 @@ def run_inference(model, input_path, output_path, voxel_size=0.1, device=torch.d
         batch_coords = np.pad(unique_coords, ((0,0), (1,0)), mode='constant', constant_values=0)
 
         # Dynamic Spatial Shape (max coord + padding)
-        spatial_shape = (unique_coords.max(0) + 10).tolist()
+        spatial_shape = (unique_coords.max(0) + SPATIAL_SHAPE_PADDING).tolist()
 
         input_tensor = spconv.SparseConvTensor(
             features=torch.as_tensor(voxel_features, dtype=torch.float32, device=device),
@@ -232,15 +269,37 @@ def run_inference(model, input_path, output_path, voxel_size=0.1, device=torch.d
         # Assign every point the label of the voxel it falls into
         point_labels_model = voxel_preds[unique_inverse_indices]
 
-        # Map Model Classes -> LAS Codes
-        point_labels_las = np.zeros_like(point_labels_model, dtype=np.uint8)
-        for model_class, las_code in MODEL_TO_LAS_MAP.items():
-            point_labels_las[point_labels_model == model_class] = las_code
+        # 5. SAVE (mode-aware)
+        if mode == 'raw':
+            point_labels_las = np.zeros_like(point_labels_model, dtype=np.uint8)
+            for model_class, las_code in MODEL_TO_LAS_MAP.items():
+                point_labels_las[point_labels_model == model_class] = las_code
+            print(f"Saving raw to {output_path}...")
+            save_las(output_path, original_arrays, point_labels_las, meta)
 
-        # 5. SAVE
-        print(f"Saving to {output_path}...")
-        save_las(output_path, original_arrays, point_labels_las, meta)
-        print(f"Done: {output_path}")
+        elif mode == 'masked':
+            masked_labels = apply_bridge_mask(original_arrays['Classification'], point_labels_model)
+            print(f"Saving masked to {output_path}...")
+            save_las(output_path, original_arrays, masked_labels, meta)
+
+        elif mode == 'both':
+            # Raw save first
+            point_labels_las = np.zeros_like(point_labels_model, dtype=np.uint8)
+            for model_class, las_code in MODEL_TO_LAS_MAP.items():
+                point_labels_las[point_labels_model == model_class] = las_code
+            print(f"Saving raw to {output_path}...")
+            save_las(output_path, original_arrays, point_labels_las, meta)
+
+            # Masked save — re-load original because save_las mutates original_arrays['Classification']
+            _, _, meta2, original_arrays2 = load_las(input_path)
+            masked_labels = apply_bridge_mask(original_arrays2['Classification'], point_labels_model)
+            p = Path(input_path)
+            masked_path = Path(output_path).parent / (p.stem + '_bridge_masked' + p.suffix)
+            os.makedirs(masked_path.parent, exist_ok=True)
+            print(f"Saving masked to {masked_path}...")
+            save_las(masked_path, original_arrays2, masked_labels, meta2)
+
+        print(f"Done: {input_path}")
         return True
 
     except Exception as e:
@@ -272,7 +331,7 @@ def parse_pairs_file(filepath):
     return pairs
 
 
-def run_batch_inference(model, pairs, voxel_size=0.1, device=torch.device("cpu"), bridge_timeout=150):
+def run_batch_inference(model, pairs, voxel_size=0.1, device=torch.device("cpu"), bridge_timeout=150, mode='masked'):
     """Run inference on multiple input/output file pairs.
 
     Processes each pair sequentially, continuing on failure so one bad file
@@ -288,6 +347,7 @@ def run_batch_inference(model, pairs, voxel_size=0.1, device=torch.device("cpu")
         voxel_size: Voxel size in meters. Default: 0.1.
         device: Device the model is on. Default: cpu.
         bridge_timeout: Seconds before a hung bridge is skipped. Default: 150.
+        mode: Output mode passed to run_inference. Default: 'masked'.
 
     Returns:
         Tuple of (succeeded_count, failed_count).
@@ -302,7 +362,7 @@ def run_batch_inference(model, pairs, voxel_size=0.1, device=torch.device("cpu")
             print(f"\n[{i}/{total}] {input_path} -> {output_path}")
             signal.setitimer(signal.ITIMER_REAL, bridge_timeout)
             try:
-                ok = run_inference(model, input_path, output_path, voxel_size, device)
+                ok = run_inference(model, input_path, output_path, voxel_size, device, mode=mode)
             except BridgeTimeout:
                 print(f"TIMEOUT: bridge={bridge_id} exceeded {bridge_timeout}s, skipping")
                 ok = False
@@ -329,6 +389,10 @@ def main():
     parser.add_argument('--gpu', action='store_true', help='Force use of GPU')
     parser.add_argument('--bridge-timeout', type=float, default=150,
                         help='Seconds before a hung bridge is skipped in batch mode (default: 150, supports decimals)')
+    parser.add_argument('--mode', type=str, default='masked', choices=['raw', 'masked', 'both'],
+                        help='Output mode: masked=bridge deck only overlaid on original lidar (default), '
+                             'raw=all model labels replace original (old behavior), '
+                             'both=save raw (_predicted.laz) and masked (_bridge_masked.laz)')
     args = parser.parse_args()
 
     # Validate: either single-file mode or batch mode, not both
@@ -348,11 +412,11 @@ def main():
     # Dispatch
     if args.pairs_file:
         pairs = parse_pairs_file(args.pairs_file)
-        succeeded, failed = run_batch_inference(model, pairs, args.voxel_size, device, args.bridge_timeout)
+        succeeded, failed = run_batch_inference(model, pairs, args.voxel_size, device, args.bridge_timeout, mode=args.mode)
         if failed > 0:
             sys.exit(1)
     else:
-        ok = run_inference(model, args.input, args.output, args.voxel_size, device)
+        ok = run_inference(model, args.input, args.output, args.voxel_size, device, mode=args.mode)
         if not ok:
             sys.exit(1)
 
