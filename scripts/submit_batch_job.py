@@ -32,6 +32,10 @@ from datetime import datetime
 import boto3
 from botocore.exceptions import ClientError
 
+# Add project root to path so we can import from src/
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from src.s3_utils import parse_s3_uri, stream_manifest_lines
+
 MAX_ARRAY_SIZE = 10_000  # AWS Batch hard limit
 DEFAULT_CHUNK_TARGET = 60
 SPOT_PRICE_PER_HOUR = 0.218  # g4dn.xlarge spot estimate - https://instances.vantage.sh/aws/ec2/g4dn.xlarge?currency=USD
@@ -61,13 +65,7 @@ def get_terraform_outputs(terraform_dir='terraform'):
 
 def count_manifest_lines(s3_client, manifest_uri):
     """Stream an S3 manifest and count non-empty lines."""
-    bucket, key = parse_s3_uri(manifest_uri)
-    response = s3_client.get_object(Bucket=bucket, Key=key)
-    count = 0
-    for line in response['Body'].iter_lines():
-        if line.strip():
-            count += 1
-    return count
+    return sum(1 for _ in stream_manifest_lines(s3_client, manifest_uri))
 
 
 def validate_manifest(s3_client, manifest_uri):
@@ -95,13 +93,6 @@ def validate_manifest(s3_client, manifest_uri):
             seen[line] = i
 
     return len(lines), issues
-
-
-def parse_s3_uri(uri):
-    """Split s3://bucket/key into (bucket, key)."""
-    path = uri[5:]
-    bucket, _, key = path.partition('/')
-    return bucket, key
 
 
 def compute_array_size(total, chunk_target, max_array_size=MAX_ARRAY_SIZE):

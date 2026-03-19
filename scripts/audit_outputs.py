@@ -4,6 +4,8 @@ Bridge Classification — Post-Run Output Audit
 Verifies that all expected outputs exist in S3 after a batch run.
 Optionally writes missing entries to a new manifest for re-submission.
 
+Uses a thread pool for parallel S3 head_object checks.
+
 Usage:
     # Check all outputs exist
     python scripts/audit_outputs.py \
@@ -20,70 +22,54 @@ Usage:
         --mode masked \
         --write-missing missing.txt
 
+    # Tune concurrency (default: 200)
+    python scripts/audit_outputs.py ... --workers 100
+
     # Use a specific AWS profile
     python scripts/audit_outputs.py ... --profile Data
 """
 
 import argparse
+import os
 import sys
-from pathlib import PurePosixPath
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import boto3
 from botocore.config import Config as BotoConfig
-from botocore.exceptions import ClientError
 
-# Must match the extensions probed in batch_entrypoint.py
-PROBE_EXTENSIONS = ['.laz', '.las']
+# Add project root to path so we can import from src/
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from src.s3_utils import (
+    object_exists, resolve_extension, resolve_output_keys,
+    stream_manifest_lines,
+)
 
-
-def parse_s3_uri(uri):
-    """Split s3://bucket/key into (bucket, key)."""
-    path = uri[5:]
-    bucket, _, key = path.partition('/')
-    return bucket, key
+DEFAULT_WORKERS = 200
 
 
-def object_exists(s3_client, bucket, key):
-    """Check if an S3 object exists."""
-    try:
-        s3_client.head_object(Bucket=bucket, Key=key)
-        return True
-    except ClientError as e:
-        if e.response['Error']['Code'] == '404':
-            return False
-        raise
+def _make_session(profile):
+    """Create a boto3 session (called once per thread via threading.local)."""
+    session = boto3.Session(profile_name=profile) if profile else boto3.Session()
+    return session.client('s3', config=BotoConfig(retries={'max_attempts': 3, 'mode': 'adaptive'}))
 
 
-def resolve_extension(s3_client, bucket, input_prefix, manifest_line):
-    """Determine the actual extension for a manifest line by probing S3."""
-    p = PurePosixPath(manifest_line)
-    if p.suffix in ('.laz', '.las'):
-        return p.suffix
+def check_line(thread_local, profile, bucket, input_prefix, output_prefix, mode, line):
+    """Check whether all expected outputs exist for a single manifest line.
 
-    for ext in PROBE_EXTENSIONS:
-        key = f"{input_prefix}/{manifest_line}{ext}"
-        if object_exists(s3_client, bucket, key):
-            return ext
+    Creates a per-thread S3 client on first use (boto3 clients are not thread-safe).
 
-    return '.laz'  # default fallback
+    Returns:
+        (line, all_exist) tuple.
+    """
+    if not hasattr(thread_local, 's3'):
+        thread_local.s3 = _make_session(profile)
+    s3 = thread_local.s3
 
-
-def expected_output_keys(output_prefix, manifest_line, ext, mode):
-    """Return list of expected S3 output keys for a manifest line."""
-    p = PurePosixPath(manifest_line)
-    huc_id = str(p.parent)
-    stem = p.stem
-
-    keys = []
-    if mode == 'masked':
-        keys.append(f"{output_prefix}/{huc_id}/{stem}_bridge_masked{ext}")
-    elif mode == 'raw':
-        keys.append(f"{output_prefix}/{huc_id}/{stem}_predicted{ext}")
-    elif mode == 'both':
-        keys.append(f"{output_prefix}/{huc_id}/{stem}_predicted{ext}")
-        keys.append(f"{output_prefix}/{huc_id}/{stem}_bridge_masked{ext}")
-
-    return keys
+    ext = resolve_extension(s3, bucket, input_prefix, line) if input_prefix else '.laz'
+    output_keys = resolve_output_keys(output_prefix, line, ext, mode)
+    all_exist = all(object_exists(s3, bucket, k) for k in output_keys.values())
+    return line, all_exist
 
 
 def main():
@@ -95,43 +81,50 @@ def main():
     parser.add_argument('--mode', type=str, default='masked', choices=['raw', 'masked', 'both'],
                         help='Inference mode (determines expected output filenames)')
     parser.add_argument('--write-missing', type=str, help='Write missing manifest lines to this file')
+    parser.add_argument('--workers', type=int, default=DEFAULT_WORKERS,
+                        help=f'Parallel S3 check workers (default: {DEFAULT_WORKERS})')
     parser.add_argument('--profile', type=str, help='AWS profile')
     args = parser.parse_args()
 
+    # Use a single session only for reading the manifest (single-threaded)
     session = boto3.Session(profile_name=args.profile) if args.profile else boto3.Session()
-    s3 = session.client('s3', config=BotoConfig(retries={'max_attempts': 3, 'mode': 'adaptive'}))
+    s3_main = session.client('s3', config=BotoConfig(retries={'max_attempts': 3, 'mode': 'adaptive'}))
 
     # Read manifest
-    manifest_bucket, manifest_key = parse_s3_uri(args.manifest)
-    response = s3.get_object(Bucket=manifest_bucket, Key=manifest_key)
+    lines = list(stream_manifest_lines(s3_main, args.manifest))
+    total = len(lines)
+    print(f"Manifest: {total} entries")
+    print(f"Checking outputs in s3://{args.bucket}/{args.output_prefix}/ "
+          f"(mode={args.mode}, workers={args.workers})")
 
-    lines = []
-    for raw_line in response['Body'].iter_lines():
-        line = raw_line.decode('utf-8').strip() if isinstance(raw_line, bytes) else raw_line.strip()
-        if line:
-            lines.append(line)
-
-    print(f"Manifest: {len(lines)} entries")
-    print(f"Checking outputs in s3://{args.bucket}/{args.output_prefix}/ (mode={args.mode})")
-
+    thread_local = threading.local()
     found = 0
     missing_lines = []
+    completed = 0
+    lock = threading.Lock()
 
-    for i, line in enumerate(lines, 1):
-        ext = resolve_extension(s3, args.bucket, args.input_prefix, line) if args.input_prefix else '.laz'
-        keys = expected_output_keys(args.output_prefix, line, ext, args.mode)
+    with ThreadPoolExecutor(max_workers=args.workers) as pool:
+        futures = {
+            pool.submit(
+                check_line, thread_local, args.profile,
+                args.bucket, args.input_prefix, args.output_prefix, args.mode, line
+            ): line
+            for line in lines
+        }
 
-        all_exist = all(object_exists(s3, args.bucket, k) for k in keys)
-        if all_exist:
-            found += 1
-        else:
-            missing_lines.append(line)
-
-        if i % 10000 == 0:
-            print(f"  Checked {i}/{len(lines)} — {found} found, {len(missing_lines)} missing")
+        for future in as_completed(futures):
+            line, all_exist = future.result()  # re-raises any exception from the thread
+            with lock:
+                completed += 1
+                if all_exist:
+                    found += 1
+                else:
+                    missing_lines.append(line)
+                if completed % 10000 == 0:
+                    print(f"  Checked {completed}/{total} — {found} found, {len(missing_lines)} missing")
 
     missing = len(missing_lines)
-    print(f"\nResults: {found} found, {missing} missing out of {len(lines)} total")
+    print(f"\nResults: {found} found, {missing} missing out of {total} total")
 
     if args.write_missing and missing_lines:
         with open(args.write_missing, 'w') as f:

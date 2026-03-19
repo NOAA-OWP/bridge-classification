@@ -30,9 +30,10 @@ from botocore.exceptions import ClientError
 # Add project root to path so we can import from src/
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from src.inference import BridgeTimeout, _timeout_handler, load_model, run_inference
-
-# S3 extensions to try when manifest line has no extension
-PROBE_EXTENSIONS = ['.laz', '.las']
+from src.s3_utils import (
+    download_file, object_exists, parse_s3_uri, resolve_input_key,
+    resolve_output_keys, upload_file,
+)
 
 
 def log(msg, child_index=None, bridge_id=None):
@@ -75,99 +76,6 @@ def compute_chunk(job_index, array_size, total_lines):
     start = job_index * chunk_size
     end = min(start + chunk_size, total_lines)
     return start, end
-
-
-def parse_s3_uri(uri):
-    """Split s3://bucket/key into (bucket, key)."""
-    path = uri[5:]  # strip 's3://'
-    bucket, _, key = path.partition('/')
-    return bucket, key
-
-
-def resolve_input_key(s3_client, bucket, input_prefix, manifest_line):
-    """Resolve a manifest line to an S3 input key, probing extensions if needed.
-
-    Args:
-        s3_client: boto3 S3 client.
-        bucket: S3 bucket name.
-        input_prefix: S3 prefix for input files.
-        manifest_line: e.g. '02050206/bridge_123_USGS...' or '02050206/bridge_123.laz'
-
-    Returns:
-        Full S3 key (e.g. 'prefix/02050206/bridge_123.laz').
-
-    Raises:
-        FileNotFoundError if no matching file exists in S3.
-    """
-    p = PurePosixPath(manifest_line)
-
-    # If the line already has an extension, use it directly
-    if p.suffix in ('.laz', '.las'):
-        return f"{input_prefix}/{manifest_line}"
-
-    # No extension — probe S3 for each candidate
-    for ext in PROBE_EXTENSIONS:
-        key = f"{input_prefix}/{manifest_line}{ext}"
-        try:
-            s3_client.head_object(Bucket=bucket, Key=key)
-            return key
-        except ClientError as e:
-            if e.response['Error']['Code'] == '404':
-                continue
-            raise
-
-    raise FileNotFoundError(
-        f"No file found in S3 for manifest line '{manifest_line}' "
-        f"(tried extensions: {PROBE_EXTENSIONS})"
-    )
-
-
-def resolve_output_key(output_prefix, input_key, inference_mode):
-    """Derive the S3 output key(s) from the input key.
-
-    Returns dict with keys 'primary' and optionally 'masked' for mode=both.
-    The output preserves the input file extension.
-    """
-    p = PurePosixPath(input_key)
-    huc_id = p.parent.name  # e.g. '02050206'
-    ext = p.suffix           # e.g. '.laz' or '.las'
-    stem = p.stem            # e.g. 'bridge_123_USGS...'
-
-    if inference_mode == 'masked':
-        primary_name = f"{stem}_bridge_masked{ext}"
-    else:
-        # 'raw' or 'both': primary output is _predicted
-        primary_name = f"{stem}_predicted{ext}"
-
-    result = {'primary': f"{output_prefix}/{huc_id}/{primary_name}"}
-
-    if inference_mode == 'both':
-        masked_name = f"{stem}_bridge_masked{ext}"
-        result['masked'] = f"{output_prefix}/{huc_id}/{masked_name}"
-
-    return result
-
-
-def output_exists_in_s3(s3_client, bucket, key):
-    """Check if an S3 object exists. Returns True/False; raises on non-404 errors."""
-    try:
-        s3_client.head_object(Bucket=bucket, Key=key)
-        return True
-    except ClientError as e:
-        if e.response['Error']['Code'] == '404':
-            return False
-        raise
-
-
-def download_file(s3_client, bucket, key, local_path):
-    """Download an S3 object to a local path."""
-    os.makedirs(os.path.dirname(local_path), exist_ok=True)
-    s3_client.download_file(bucket, key, local_path)
-
-
-def upload_file(s3_client, local_path, bucket, key):
-    """Upload a local file to S3."""
-    s3_client.upload_file(local_path, bucket, key)
 
 
 def cleanup(*paths):
@@ -265,12 +173,13 @@ def main():
                 download_failed += 1
                 continue
 
-            output_keys = resolve_output_key(cfg['s3_output_prefix'], input_key, mode)
+            input_ext = PurePosixPath(input_key).suffix
+            output_keys = resolve_output_keys(cfg['s3_output_prefix'], manifest_line, input_ext, mode)
 
             # 4b. Skip if output already exists in S3 (resumability)
-            primary_exists = output_exists_in_s3(s3, bucket, output_keys['primary'])
+            primary_exists = object_exists(s3, bucket, output_keys['primary'])
             if mode == 'both':
-                masked_exists = output_exists_in_s3(s3, bucket, output_keys.get('masked', ''))
+                masked_exists = object_exists(s3, bucket, output_keys.get('masked', ''))
                 all_exist = primary_exists and masked_exists
             else:
                 all_exist = primary_exists
