@@ -42,9 +42,11 @@ import signal
 import sys
 from pathlib import Path
 
+# Ensure project root is on sys.path before src.* imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
 import numpy as np
 import torch
-
 
 from src.constants import (
     BRIDGE_DECK_ASPRS_CODE, BRIDGE_DECK_MODEL_CLASS, MIN_POINT_COUNT,
@@ -54,15 +56,8 @@ from src.constants import (
 from src.las_io import read_las, write_las, normalize_intensity
 from src.voxelization import voxelize
 
-# Ensure we can import the model structure
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-try:
-    import spconv.pytorch as spconv
-    from src.model import SparseUNet
-except ImportError:
-    # Fallback if running directly from src
-    from model import SparseUNet
-    import spconv.pytorch as spconv
+import spconv.pytorch as spconv
+from src.model import SparseUNet
 
 def apply_bridge_mask(original_classification, point_labels_model):
     """Apply binary bridge deck mask: only reclassify model class 2 -> ASPRS 17.
