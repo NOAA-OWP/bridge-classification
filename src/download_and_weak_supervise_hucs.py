@@ -58,6 +58,7 @@ import geopandas as gpd
 import pdal
 import json
 import os
+import sys
 import numpy as np
 import argparse
 import random
@@ -72,6 +73,9 @@ from sklearn.linear_model import RANSACRegressor, LinearRegression
 from sklearn.decomposition import PCA
 from scipy.spatial import ConvexHull
 from matplotlib.path import Path as MatplotlibPath
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from src.logging import setup_logging
 
 try:
     from tqdm import tqdm
@@ -1208,61 +1212,6 @@ class BridgeProcessor:
                 print(f"  ... and {len(errors) - 10} more errors (see log file for complete list)")
 
 
-def setup_logging(log_dir: str = './logs') -> logging.Logger:
-    """
-    Set up logging to both file and console.
-
-    Args:
-        log_dir: Directory to store log files
-
-    Returns:
-        Configured logger instance
-    """
-    global logger
-
-    # Create logs directory if it doesn't exist
-    log_dir_path = Path(log_dir)
-    log_dir_path.mkdir(parents=True, exist_ok=True)
-
-    # Create timestamped log file
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    log_file = log_dir_path / f'bridge_processing_{timestamp}.log'
-
-    # Create logger
-    logger = logging.getLogger('bridge_processing')
-    logger.setLevel(logging.INFO)
-
-    # Remove existing handlers to avoid duplicates and close them properly
-    for handler in logger.handlers[:]:
-        handler.close()
-        logger.removeHandler(handler)
-    logger.handlers = []
-
-    # Create formatters
-    file_formatter = logging.Formatter(
-        '%(asctime)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
-    console_formatter = logging.Formatter(
-        '%(levelname)s - %(message)s'
-    )
-
-    # File handler (all messages)
-    file_handler = logging.FileHandler(str(log_file), mode='w')
-    file_handler.setLevel(logging.INFO)
-    file_handler.setFormatter(file_formatter)
-    logger.addHandler(file_handler)
-
-    # Console handler (INFO and above, but less verbose)
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.WARNING)  # Only warnings and errors to console
-    console_handler.setFormatter(console_formatter)
-    logger.addHandler(console_handler)
-
-    logger.info(f"Logging initialized. Log file: {log_file}")
-    print(f"Log file: {log_file}")
-
-    return logger
 
 
 def main() -> None:
@@ -1348,8 +1297,8 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    # Set up logging once with the specified log directory
-    setup_logging(args.log_dir)
+    global logger
+    logger = setup_logging('bridge_processing', args.log_dir)
 
     # Create configuration instance
     config = BridgeProcessingConfig()

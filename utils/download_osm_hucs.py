@@ -21,9 +21,11 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from io import BytesIO
 from typing import TypedDict
 
-import boto3
 import geopandas as gpd
 from botocore.exceptions import ClientError
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from src.s3 import create_s3_client
 
 # Suppress warnings for cleaner output
 warnings.filterwarnings('ignore')
@@ -89,8 +91,7 @@ def _process_one_huc(work_item: tuple[str, str, str, str | None, str | None, str
     }
 
     try:
-        session = boto3.Session(profile_name=profile_name)
-        s3 = session.client('s3')
+        s3 = create_s3_client(profile=profile_name)
         response = s3.get_object(Bucket=bucket_name, Key=s3_key)
         file_content = BytesIO(response['Body'].read())
         gdf = gpd.read_file(file_content)
@@ -196,11 +197,9 @@ def process_bridge_files(
     try:
         if profile_name:
             print(f"Using AWS Profile: {profile_name}")
-            session = boto3.Session(profile_name=profile_name)
         else:
             print("Using default AWS environment credentials")
-            session = boto3.Session()
-        s3 = session.client('s3')
+        s3 = create_s3_client(profile=profile_name)
     except Exception as e:
         print(f"Error initializing AWS session: {e}")
         sys.exit(1)

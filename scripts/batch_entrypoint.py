@@ -205,16 +205,8 @@ def main():
                 download_failed += 1
                 continue
 
-            # 4d. Prepare local output path
-            input_p = PurePosixPath(input_key)
-            ext = input_p.suffix
-            stem = input_p.stem
-
-            if mode == 'masked':
-                output_name = f"{stem}_bridge_masked{ext}"
-            else:
-                output_name = f"{stem}_predicted{ext}"
-
+            # 4d. Prepare local output path (derived from resolve_output_keys)
+            output_name = PurePosixPath(output_keys['primary']).name
             local_output_dir = output_dir / huc_id
             local_output_dir.mkdir(parents=True, exist_ok=True)
             local_output = str(local_output_dir / output_name)
@@ -248,8 +240,8 @@ def main():
 
                 # mode=both: also upload the masked file that run_inference wrote
                 if mode == 'both' and 'masked' in output_keys:
-                    masked_local = str(Path(local_output).with_name(
-                        f"{stem}_bridge_masked{ext}"))
+                    masked_name = PurePosixPath(output_keys['masked']).name
+                    masked_local = str(local_output_dir / masked_name)
                     if os.path.isfile(masked_local):
                         upload_file(s3, masked_local, bucket, output_keys['masked'])
                         log(f"UPLOADED s3://{bucket}/{output_keys['masked']}",

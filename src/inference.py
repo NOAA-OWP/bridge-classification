@@ -52,6 +52,7 @@ from src.constants import (
     SPATIAL_SHAPE_PADDING, BridgeTimeout, _timeout_handler,
 )
 from src.las_io import read_las, write_las, normalize_intensity
+from src.voxelization import voxelize
 
 # Ensure we can import the model structure
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -159,28 +160,14 @@ def run_inference(model, input_path, output_path, voxel_size=0.1, device=torch.d
             return False
 
         # 2. PREPROCESS (Normalize & Voxelize)
-        # Shift to local coordinates (min=0) to match training distribution
         xyz_min = raw_xyz.min(axis=0)
         xyz_centered = raw_xyz - xyz_min
 
-        # Quantize
-        discrete_coords = np.floor(xyz_centered / voxel_size).astype(np.int32)
-
-        # Unique Voxel Logic
-        # unique_coords: The voxels fed to the network (M, 3)
-        # unique_inverse_indices: Mapping from Original Points (N) -> Voxel Index (M)
-        unique_coords, unique_inverse_indices = np.unique(discrete_coords, axis=0, return_inverse=True)
-
-        # Feature Aggregation (Mean Intensity per Voxel)
-        print("Aggregating features...")
-        flat_intensity = raw_intensity.ravel()
-
-        # Sum of intensity per voxel index
-        sum_features = np.bincount(unique_inverse_indices, weights=flat_intensity)
-        count_features = np.bincount(unique_inverse_indices)
-
-        # Mean intensity per voxel
-        voxel_features = (sum_features / count_features).reshape(-1, 1)
+        print("Voxelizing...")
+        vox = voxelize(xyz_centered, voxel_size, raw_intensity)
+        unique_coords = vox.unique_coords
+        unique_inverse_indices = vox.inverse_map
+        voxel_features = vox.voxel_features
 
         print(f"Voxelization: {len(raw_xyz)} points -> {len(unique_coords)} voxels")
 

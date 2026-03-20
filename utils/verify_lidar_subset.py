@@ -22,8 +22,9 @@ import geopandas as gpd
 
 # Optional S3 support
 try:
-    import boto3
     from botocore.exceptions import ClientError
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+    from src.s3 import create_s3_client
     HAS_BOTO = True
 except ImportError:
     HAS_BOTO = False
@@ -87,8 +88,7 @@ def _verify_one_huc_s3(
     lidar_key = f"{base}osm_bridges_lidar_subset__{huc_id}.gpkg"
 
     try:
-        session = boto3.Session(profile_name=profile_name)
-        s3 = session.client("s3")
+        s3 = create_s3_client(profile=profile_name)
         resp_full = s3.get_object(Bucket=bucket, Key=full_key)
         full_gdf = gpd.read_file(BytesIO(resp_full["Body"].read()))
 
@@ -148,8 +148,7 @@ def list_hucs_s3(bucket: str, prefix: str, profile_name: str | None) -> list[str
     """List HUC IDs under prefix (CommonPrefixes). Prefix should end with /."""
     if not HAS_BOTO:
         return []
-    session = boto3.Session(profile_name=profile_name)
-    s3 = session.client("s3")
+    s3 = create_s3_client(profile=profile_name)
     paginator = s3.get_paginator("list_objects_v2")
     huc_ids = []
     for page in paginator.paginate(Bucket=bucket, Prefix=prefix, Delimiter="/"):

@@ -77,52 +77,7 @@ except ImportError as e:
 # Import model
 from model import SparseUNet
 from src.constants import CLASS_COLORS, CLASS_NAMES
-
-
-def aggregate_voxel_points(xyz: np.ndarray, features: np.ndarray, labels: np.ndarray,
-                          voxel_coords: np.ndarray, voxel_size: float) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """
-    Aggregate points within each voxel using vectorized numpy operations.
-
-    For each voxel:
-    - Features: Average intensity across all points in the voxel
-    - Coordinates: Voxel center (discrete_coords * voxel_size + voxel_size/2)
-    - Labels: Majority vote (most common label in voxel)
-
-    Args:
-        xyz: Original point coordinates (N, 3) [unused, kept for API compatibility]
-        features: Point features (N, 1) - intensity
-        labels: Point labels (N,)
-        voxel_coords: Discrete voxel coordinates (N, 3)
-        voxel_size: Size of each voxel in meters
-
-    Returns:
-        Tuple of (aggregated_xyz, aggregated_features, aggregated_labels)
-    """
-    # Find unique voxels and map each point to its voxel index (vectorized, no Python loops)
-    unique_voxels, inverse_indices = np.unique(voxel_coords, axis=0, return_inverse=True)
-    n_voxels = len(unique_voxels)
-
-    # Mean intensity per voxel using bincount (O(N) numpy, ~100x faster than Python dict loop)
-    counts = np.bincount(inverse_indices, minlength=n_voxels).astype(np.float64)
-    agg_feats = np.bincount(
-        inverse_indices, weights=features[:, 0].astype(np.float64), minlength=n_voxels
-    ) / counts
-    aggregated_features = agg_feats[:, np.newaxis].astype(np.float32)
-
-    # Majority vote: loop over 4 known classes only (not over every point)
-    n_classes = max(4, int(labels.max()) + 1)
-    label_votes = np.zeros((n_voxels, n_classes), dtype=np.int32)
-    for c in range(n_classes):
-        mask = labels == c
-        if mask.any():
-            label_votes[:, c] = np.bincount(inverse_indices[mask], minlength=n_voxels)
-    aggregated_labels = label_votes.argmax(axis=1).astype(np.int64)
-
-    # Voxel centers from quantized coordinates
-    aggregated_xyz = unique_voxels.astype(np.float32) * voxel_size + voxel_size / 2.0
-
-    return aggregated_xyz, aggregated_features, aggregated_labels
+from src.voxelization import voxelize
 
 
 class BridgeDataset(Dataset):
@@ -204,27 +159,21 @@ class BridgeDataset(Dataset):
             # Re-shift to positive after rotation (rotation can make things negative again)
             xyz -= xyz.min(axis=0)
 
-        # 3. Quantization (Voxelization)
-        # Divide by voxel size and floor to get integer grid coordinates
-        discrete_coords = np.floor(xyz / self.voxel_size).astype(np.int32)
+        # 3. Voxelization + feature/label aggregation
+        result = voxelize(xyz, self.voxel_size, feat, labels)
+        coords = result.unique_coords
+        features = result.voxel_features
+        agg_labels = result.voxel_labels
 
-        # 4. Aggregate points within voxels
-        aggregated_xyz, aggregated_features, aggregated_labels = aggregate_voxel_points(
-            xyz, feat, labels, discrete_coords, self.voxel_size
-        )
-
-        # 5. Re-quantize aggregated coordinates to get final discrete coords
-        final_discrete_coords = np.floor(aggregated_xyz / self.voxel_size).astype(np.int32)
-
-        # 6. Subsample if voxel count exceeds max_voxels (prevents OOM on outlier bridges)
-        if self.max_voxels is not None and len(final_discrete_coords) > self.max_voxels:
-            indices = np.random.choice(len(final_discrete_coords), self.max_voxels, replace=False)
+        # 4. Subsample if voxel count exceeds max_voxels (prevents OOM on outlier bridges)
+        if self.max_voxels is not None and len(coords) > self.max_voxels:
+            indices = np.random.choice(len(coords), self.max_voxels, replace=False)
             indices.sort()  # Preserve spatial ordering
-            final_discrete_coords = final_discrete_coords[indices]
-            aggregated_features = aggregated_features[indices]
-            aggregated_labels = aggregated_labels[indices]
+            coords = coords[indices]
+            features = features[indices]
+            agg_labels = agg_labels[indices]
 
-        return final_discrete_coords, aggregated_features, aggregated_labels
+        return coords, features, agg_labels
 
 
 def sparse_collate_fn(batch: List[Tuple[np.ndarray, np.ndarray, np.ndarray]]) -> Dict[str, torch.Tensor]:

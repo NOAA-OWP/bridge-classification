@@ -62,6 +62,30 @@ No CLI. Imported by `inference.py`, `preprocess_bridges.py`, `evaluate_model.py`
 
 ---
 
+### `src/voxelization.py`
+
+Shared voxelization utilities for training and inference. Converts raw point clouds into discrete voxel grids with aggregated features.
+
+**Classes:**
+
+
+| Class         | Description                                                                                   |
+| ------------- | --------------------------------------------------------------------------------------------- |
+| `VoxelResult` | Dataclass with `unique_coords` (M,3), `voxel_features` (M,1), `inverse_map` (N,), `voxel_labels` (M, optional). |
+
+
+**Functions:**
+
+
+| Function                                             | Description                                                                                           |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `voxelize(xyz, voxel_size, intensity, labels=None)`  | Quantize xyz, deduplicate voxels, compute mean intensity. With labels: majority-vote per voxel.        |
+
+
+No CLI. Imported by `train.py` and `inference.py`.
+
+---
+
 ### `src/download_and_weak_supervise_hucs.py`
 
 Full HUC-based pipeline for downloading USGS LiDAR and generating weakly-supervised silver training data. This is the primary data acquisition script.

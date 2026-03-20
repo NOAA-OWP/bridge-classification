@@ -30,11 +30,10 @@ import sys
 from datetime import datetime
 
 import boto3
-from botocore.exceptions import ClientError
 
 # Add project root to path so we can import from src/
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-from src.s3 import parse_s3_uri, stream_manifest_lines
+from src.s3 import create_s3_client, stream_manifest_lines
 
 MAX_ARRAY_SIZE = 10_000  # AWS Batch hard limit
 DEFAULT_CHUNK_TARGET = 60
@@ -70,21 +69,13 @@ def count_manifest_lines(s3_client, manifest_uri):
 
 def validate_manifest(s3_client, manifest_uri):
     """Check manifest for common issues. Returns (line_count, issues)."""
-    bucket, key = parse_s3_uri(manifest_uri)
-    response = s3_client.get_object(Bucket=bucket, Key=key)
-
-    lines = []
+    lines = list(stream_manifest_lines(s3_client, manifest_uri))
     issues = []
-    for i, raw_line in enumerate(response['Body'].iter_lines(), 1):
-        line = raw_line.decode('utf-8').strip() if isinstance(raw_line, bytes) else raw_line.strip()
-        if not line:
-            issues.append(f"Line {i}: empty")
-            continue
+
+    for i, line in enumerate(lines, 1):
         if '/' not in line:
             issues.append(f"Line {i}: no '/' separator (expected huc_id/bridge_stem): {line[:80]}")
-        lines.append(line)
 
-    # Check duplicates
     seen = {}
     for i, line in enumerate(lines, 1):
         if line in seen:
@@ -148,8 +139,7 @@ def main():
         sys.exit(1)
 
     s3_profile = args.profile or os.environ.get('S3_PROFILE') or aws_profile
-    session = boto3.Session(profile_name=s3_profile)
-    s3 = session.client('s3')
+    s3 = create_s3_client(s3_profile)
 
     # --- Validate manifest ---
     if args.validate and args.manifest:
