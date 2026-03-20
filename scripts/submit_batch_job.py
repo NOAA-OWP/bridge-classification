@@ -43,7 +43,7 @@ SPOT_PRICE_PER_HOUR = 0.218  # g4dn.xlarge spot estimate - https://instances.van
 def get_terraform_outputs(terraform_dir='terraform'):
     """Read AWS config from terraform outputs."""
     outputs = {}
-    keys = ['aws_region', 'aws_profile', 'job_definition_name', 'job_queue_name']
+    keys = ['aws_region', 'aws_profile', 'job_definition_name', 'job_queue_name', 's3_manifest_uri']
 
     if not os.path.isdir(terraform_dir):
         return outputs
@@ -138,13 +138,18 @@ def main():
         print("Run 'cd terraform && terraform init && terraform apply' or set env vars.")
         sys.exit(1)
 
+    # Fall back to s3_manifest_uri from terraform outputs when --manifest not provided
+    manifest = args.manifest or tf.get('s3_manifest_uri')
+    if manifest and not args.manifest:
+        print(f"Using manifest from terraform output: {manifest}")
+
     s3_profile = args.profile or os.environ.get('S3_PROFILE') or aws_profile
     s3 = create_s3_client(s3_profile)
 
     # --- Validate manifest ---
-    if args.validate and args.manifest:
-        print(f"Validating manifest: {args.manifest}")
-        line_count, issues = validate_manifest(s3, args.manifest)
+    if args.validate and manifest:
+        print(f"Validating manifest: {manifest}")
+        line_count, issues = validate_manifest(s3, manifest)
         print(f"Lines: {line_count}")
         if issues:
             print(f"\nFound {len(issues)} issue(s):")
@@ -166,16 +171,16 @@ def main():
         total_files = args.total
         array_size = compute_array_size(total_files, args.chunk_target)
         print(f"Total files (provided): {total_files}")
-    elif args.manifest:
-        print(f"Counting lines from S3: {args.manifest}")
-        total_files = count_manifest_lines(s3, args.manifest)
+    elif manifest:
+        print(f"Counting lines from S3: {manifest}")
+        total_files = count_manifest_lines(s3, manifest)
         if total_files == 0:
             print("ERROR: manifest is empty")
             sys.exit(1)
         array_size = compute_array_size(total_files, args.chunk_target)
         print(f"Total files in manifest: {total_files}")
     else:
-        parser.error("Provide --manifest, --total, or --single")
+        parser.error("Provide --manifest, --total, or --single (or set s3_manifest_uri in terraform.tfvars)")
         return
 
     actual_chunk = math.ceil(total_files / array_size) if array_size > 0 else total_files
@@ -188,8 +193,8 @@ def main():
 
     # --- Parse env overrides ---
     env_overrides = {}
-    if args.manifest:
-        env_overrides['S3_MANIFEST_URI'] = args.manifest
+    if manifest:
+        env_overrides['S3_MANIFEST_URI'] = manifest
     for item in args.env:
         if '=' not in item:
             print(f"ERROR: --env value must be KEY=VALUE, got: {item}")
