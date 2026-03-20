@@ -19,7 +19,7 @@ The pipeline projects all geometries to **EPSG:3857** (Web Mercator) for metric 
 
 ## Step 1: Download & Weak Supervise
 
-**Script**: `src/download-and-weak-supervise-hucs.py`
+**Script**: `src/download_and_weak_supervise_hucs.py`
 
 ```
 OSM bridge geometry (LineString)

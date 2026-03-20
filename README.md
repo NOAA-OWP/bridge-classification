@@ -114,7 +114,7 @@ docker build --platform linux/amd64 -t bridge-classifier .
 ```bash
 # Step 1: Download & Weak Supervision
 # --skip-existing skips already processed outputs and bridges that previously had no lidar points (count==0).
-docker compose run --rm bridge-classifier python src/download-and-weak-supervise-hucs.py --source-dir ./data/ml-data/source --silver-dir ./data/ml-data/silver_training --hucs-dir ./data/osm/hucs --lidar-resources ./data/usgs_entwine/lidar_resources.geojson --worker 12 --skip-existing
+docker compose run --rm bridge-classifier python src/download_and_weak_supervise_hucs.py --source-dir ./data/ml-data/source --silver-dir ./data/ml-data/silver_training --hucs-dir ./data/osm/hucs --lidar-resources ./data/usgs_entwine/lidar_resources.geojson --worker 12 --skip-existing
 
 
 # Step 2: Preprocess & Normalization
@@ -259,7 +259,7 @@ docker compose run --rm bridge-classifier
 Once inside the container:
 
 ```bash
-python src/download-and-weak-supervise-hucs.py ...
+python src/download_and_weak_supervise_hucs.py ...
 python src/preprocess_bridges.py ...
 python src/train.py ...
 # Type 'exit' to leave the container

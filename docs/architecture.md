@@ -83,15 +83,15 @@ The definitive 4-class reference. All other components must agree with this tabl
 
 **Source references:**
 
-- Input mapping: `src/preprocess_bridges.py` — `LAS_TO_MODEL_MAP`
-- Output mapping: `src/inference.py` — `MODEL_TO_LAS_MAP`
-- Class names: `src/train.py` — `CLASS_NAMES`
+- Canonical definitions: `src/constants.py` — `LAS_TO_MODEL_MAP`, `MODEL_TO_LAS_MAP`, `CLASS_NAMES`
+- Input mapping used by: `src/preprocess_bridges.py`
+- Output mapping used by: `src/inference.py`
 
 ---
 
 ## Phase A: Silver Data Generation (Weak Supervision)
 
-**Script**: `src/download-and-weak-supervise-hucs.py`
+**Script**: `src/download_and_weak_supervise_hucs.py`
 
 The weak supervision pipeline generates labeled training data automatically, avoiding the need for manual annotation at scale.
 
