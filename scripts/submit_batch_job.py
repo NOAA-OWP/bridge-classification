@@ -34,7 +34,7 @@ from botocore.exceptions import ClientError
 
 # Add project root to path so we can import from src/
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-from src.s3_utils import parse_s3_uri, stream_manifest_lines
+from src.s3 import parse_s3_uri, stream_manifest_lines
 
 MAX_ARRAY_SIZE = 10_000  # AWS Batch hard limit
 DEFAULT_CHUNK_TARGET = 60

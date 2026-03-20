@@ -40,18 +40,19 @@ from botocore.config import Config as BotoConfig
 
 # Add project root to path so we can import from src/
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-from src.s3_utils import (
+from src.s3 import (
     object_exists, resolve_extension, resolve_output_keys,
     stream_manifest_lines,
 )
 
 DEFAULT_WORKERS = 200
+AWS_MAX_RETRIES = 3
 
 
 def _make_session(profile):
     """Create a boto3 session (called once per thread via threading.local)."""
     session = boto3.Session(profile_name=profile) if profile else boto3.Session()
-    return session.client('s3', config=BotoConfig(retries={'max_attempts': 3, 'mode': 'adaptive'}))
+    return session.client('s3', config=BotoConfig(retries={'max_attempts': AWS_MAX_RETRIES, 'mode': 'adaptive'}))
 
 
 def check_line(thread_local, profile, bucket, input_prefix, output_prefix, mode, line):

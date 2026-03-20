@@ -3,6 +3,8 @@ Bridge Classification — Batch Entrypoint for AWS Batch
 
 Required env vars (set by Batch job definition, managed by Terraform):
   AWS_BATCH_JOB_ARRAY_INDEX  - child index (0-based), set automatically by Batch
+  For other cloud providers, AWS_BATCH_JOB_ARRAY_INDEX becomes BATCH_TASK_INDEX (GCP Batch) or AZ_BATCH_TASK_ID (Azure Batch)
+
   ARRAY_SIZE                 - total number of array children
   S3_BUCKET                  - S3 bucket for input/output data
   S3_INPUT_PREFIX            - S3 prefix for source LAS/LAZ files
@@ -27,10 +29,12 @@ import torch
 from botocore.config import Config as BotoConfig
 from botocore.exceptions import ClientError
 
+AWS_MAX_RETRIES = 3
+
 # Add project root to path so we can import from src/
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from src.inference import BridgeTimeout, _timeout_handler, load_model, run_inference
-from src.s3_utils import (
+from src.s3 import (
     download_file, object_exists, parse_s3_uri, resolve_input_key,
     resolve_output_keys, upload_file,
 )
@@ -95,7 +99,7 @@ def main():
     idx = cfg['job_index']
 
     s3 = boto3.client('s3', config=BotoConfig(
-        retries={'max_attempts': 3, 'mode': 'adaptive'}
+        retries={'max_attempts': AWS_MAX_RETRIES, 'mode': 'adaptive'}
     ))
 
     # --- SIGTERM handler for SPOT interruptions ---
@@ -158,18 +162,23 @@ def main():
 
     try:
         for i, manifest_line in enumerate(chunk_lines, 1):
+            bridge_start = time.time()
+            global_line = start + i  # 1-based global manifest position
+
             # Check for SPOT shutdown
             if shutdown_requested:
-                log("Shutdown requested — stopping before next bridge", child_index=idx)
+                log("SPOT_SHUTDOWN stopping before next bridge", child_index=idx)
                 break
 
             bridge_id = PurePosixPath(manifest_line).stem
+            huc_id = manifest_line.split('/')[0]
 
             # 4a. Resolve S3 paths
             try:
                 input_key = resolve_input_key(s3, bucket, cfg['s3_input_prefix'], manifest_line)
-            except FileNotFoundError as e:
-                log(f"ERROR: {e}", child_index=idx, bridge_id=bridge_id)
+            except FileNotFoundError:
+                log(f"INPUT_NOT_FOUND manifest_line=\"{manifest_line}\"",
+                    child_index=idx, bridge_id=bridge_id)
                 download_failed += 1
                 continue
 
@@ -185,7 +194,7 @@ def main():
                 all_exist = primary_exists
 
             if all_exist:
-                log(f"SKIP: output already exists in S3 ({i}/{chunk_size})",
+                log(f"SKIP_EXISTS ({i}/{chunk_size}) manifest_line={global_line} huc={huc_id}",
                     child_index=idx, bridge_id=bridge_id)
                 skipped += 1
                 continue
@@ -196,14 +205,13 @@ def main():
             try:
                 download_file(s3, bucket, input_key, local_input)
             except ClientError as e:
-                log(f"ERROR: failed to download s3://{bucket}/{input_key}: {e}",
+                log(f"DOWNLOAD_FAILED error=\"{e}\" huc={huc_id} manifest_line={global_line}",
                     child_index=idx, bridge_id=bridge_id)
                 download_failed += 1
                 continue
 
             # 4d. Prepare local output path
             input_p = PurePosixPath(input_key)
-            huc_id = input_p.parent.name
             ext = input_p.suffix
             stem = input_p.stem
 
@@ -217,19 +225,22 @@ def main():
             local_output = str(local_output_dir / output_name)
 
             # 4e. Run inference with SIGALRM timeout
-            log(f"Inferring ({i}/{chunk_size}) mode={mode}", child_index=idx, bridge_id=bridge_id)
+            log(f"INFER_START ({i}/{chunk_size}) mode={mode} huc={huc_id} manifest_line={global_line}",
+                child_index=idx, bridge_id=bridge_id)
             signal.setitimer(signal.ITIMER_REAL, bridge_timeout)
             try:
                 ok = run_inference(model, local_input, local_output, voxel_size=0.1,
                                    device=device, mode=mode)
             except BridgeTimeout:
-                log(f"TIMEOUT: exceeded {bridge_timeout}s, skipping",
+                log(f"TIMEOUT bridge_timeout={bridge_timeout}s huc={huc_id}",
                     child_index=idx, bridge_id=bridge_id)
                 ok = False
             finally:
                 signal.setitimer(signal.ITIMER_REAL, 0)  # cancel alarm before upload
 
             if not ok:
+                log(f"INFER_FAILED huc={huc_id} manifest_line={global_line}",
+                    child_index=idx, bridge_id=bridge_id)
                 failed += 1
                 cleanup(local_input, local_output)
                 continue
@@ -237,7 +248,7 @@ def main():
             # 4f. Upload output(s) immediately
             try:
                 upload_file(s3, local_output, bucket, output_keys['primary'])
-                log(f"Uploaded: s3://{bucket}/{output_keys['primary']}",
+                log(f"UPLOADED s3://{bucket}/{output_keys['primary']}",
                     child_index=idx, bridge_id=bridge_id)
 
                 # mode=both: also upload the masked file that run_inference wrote
@@ -246,13 +257,17 @@ def main():
                         f"{stem}_bridge_masked{ext}"))
                     if os.path.isfile(masked_local):
                         upload_file(s3, masked_local, bucket, output_keys['masked'])
-                        log(f"Uploaded: s3://{bucket}/{output_keys['masked']}",
+                        log(f"UPLOADED s3://{bucket}/{output_keys['masked']}",
                             child_index=idx, bridge_id=bridge_id)
                         cleanup(masked_local)
 
+                bridge_seconds = time.time() - bridge_start
+                log(f"INFER_OK bridge_seconds={bridge_seconds:.1f}s ({i}/{chunk_size}) huc={huc_id}",
+                    child_index=idx, bridge_id=bridge_id)
                 succeeded += 1
             except ClientError as e:
-                log(f"ERROR: upload failed: {e}", child_index=idx, bridge_id=bridge_id)
+                log(f"UPLOAD_FAILED error=\"{e}\" huc={huc_id}",
+                    child_index=idx, bridge_id=bridge_id)
                 failed += 1
 
             # 4g. Cleanup local files
@@ -268,11 +283,10 @@ def main():
     # --- 5. Summary ---
     job_seconds = time.time() - job_start
     job_hours = job_seconds / 3600
-    log(f"Complete: {succeeded} succeeded, {failed} failed, {skipped} skipped, "
-        f"{download_failed} download failures out of {chunk_size}",
+    log(f"SUMMARY succeeded={succeeded} failed={failed} skipped={skipped} "
+        f"download_failed={download_failed} total={chunk_size} "
+        f"wall_clock_seconds={job_seconds:.0f} wall_clock_hours={job_hours:.4f}",
         child_index=idx)
-    log(f"JOB_WALL_CLOCK_SECONDS={job_seconds:.0f} JOB_WALL_CLOCK_HOURS={job_hours:.4f} "
-        f"(billable instance time)", child_index=idx)
 
     # Cleanup work directory
     import shutil

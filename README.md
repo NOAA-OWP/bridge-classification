@@ -1,6 +1,6 @@
 # USGS Lidar Bridge Classification
 
-A comprehensive pipeline for processing bridge lidar data organized by Hydrologic Unit Code (HUC) regions. This project downloads lidar point cloud data, applies weak supervision rules for labeling, normalizes coordinates, and prepares data for machine learning. It includes **model training** (sparse 3D U-Net) and **inference** for bridge point cloud classification; **scaling with AWS Batch** for parallel inference is [supported](docs/aws-batch-inference.md).
+A comprehensive pipeline for processing bridge lidar data organized by Hydrologic Unit Code (HUC) regions. This project downloads lidar point cloud data, applies weak supervision rules for labeling, normalizes coordinates, and prepares data for machine learning. It includes **model training** (sparse 3D U-Net) and **inference** for bridge point cloud classification with multiple output modes (masked, raw, or both); **scaling with AWS Batch** for parallel inference on SPOT instances is [supported](docs/aws-batch-inference.md).
 
 ## Table of Contents
 
@@ -22,7 +22,7 @@ For detailed design documentation, see the `docs/` directory (or build the docs 
 - **[Architecture](docs/architecture.md)** — System design, classification schema, algorithm details.
 - **[Conda environments](docs/envs.md)** — Full vs data-processing-only envs; use on GPU vs CPU-only machines.
 - **[Data Pipeline](docs/data-pipeline.md)** — Step-by-step data flow walkthrough with data shapes at each stage.
-- **[AWS Batch Inference](docs/aws-batch-inference.md)** — Terraform infrastructure, job submission scripts, chunking logic, and configuration reference for scaling inference with AWS Batch array jobs.
+- **[AWS Batch Inference](docs/aws-batch-inference.md)** — Terraform infrastructure, job submission, SPOT instance handling, inference modes, post-run audit, and configuration reference for scaling inference with AWS Batch array jobs.
 - **[Module Reference](docs/module-reference.md)** — Summary of every module's public API and CLI arguments.
 - **[Design Decisions](docs/decisions.md)** — Rationale for key architectural choices.
 
