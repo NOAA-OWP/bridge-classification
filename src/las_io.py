@@ -26,12 +26,15 @@ def write_las(output_path, arrays, srs="EPSG:3857"):
     """Write a LAS/LAZ file via PDAL with standard options.
 
     Preserves all extra dims and forward headers from the input arrays.
+    Creates parent directories if they don't exist.
 
     Args:
         output_path: Path to write the output file.
         arrays: Structured numpy array (e.g. from read_las, with Classification updated).
         srs: Spatial reference system. Default: EPSG:3857.
     """
+    import os
+    os.makedirs(os.path.dirname(str(output_path)), exist_ok=True)
     writer_stage = {
         "type": "writers.las",
         "filename": str(output_path),
