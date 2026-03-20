@@ -34,7 +34,10 @@ import numpy as np
 # Allow importing from src/
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
-from src.preprocess_bridges import LAS_TO_MODEL_MAP
+from src.constants import (
+    LAS_TO_MODEL_MAP, NUM_CLASSES, BRIDGE_DECK_MODEL_CLASS as BRIDGE_DECK_CLASS,
+    CLASS_NAMES, BridgeTimeout, _timeout_handler,
+)
 
 # Import pdal here (used in load_classifications)
 import pdal
@@ -43,17 +46,6 @@ try:
     import torch
 except ImportError:
     torch = None
-
-
-# Replicate timeout machinery inline so we don't trigger spconv import at module level.
-# load_model / run_inference are imported lazily in main() only when needed.
-class BridgeTimeout(BaseException):
-    """Raised when a single bridge exceeds the per-bridge wall-clock timeout."""
-    pass
-
-
-def _timeout_handler(signum, frame):
-    raise BridgeTimeout()
 
 try:
     from sklearn.metrics import confusion_matrix as sk_confusion_matrix
@@ -82,15 +74,6 @@ try:
     HAS_TQDM = True
 except ImportError:
     HAS_TQDM = False
-
-NUM_CLASSES = 4
-BRIDGE_DECK_CLASS = 2  # class index for Bridge Deck in model output
-CLASS_NAMES = {
-    0: "Background",
-    1: "Ground/Water",
-    2: "Bridge Deck",
-    3: "Obstacles",
-}
 
 
 # ---------------------------------------------------------------------------

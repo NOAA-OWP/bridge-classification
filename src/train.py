@@ -76,22 +76,7 @@ except ImportError as e:
 
 # Import model
 from model import SparseUNet
-
-
-# Class label mapping for visualization
-CLASS_COLORS = {
-    0: 'black',    # Background/Unclassified
-    1: 'orange',    # Ground/Water
-    2: 'blue',      # Bridge Deck
-    3: 'yellow'    # Obstacles/High Noise
-}
-
-CLASS_NAMES = {
-    0: 'Background',
-    1: 'Ground/Water',
-    2: 'Bridge Deck',
-    3: 'Obstacles',
-}
+from src.constants import CLASS_COLORS, CLASS_NAMES
 
 
 def aggregate_voxel_points(xyz: np.ndarray, features: np.ndarray, labels: np.ndarray,

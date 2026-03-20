@@ -48,13 +48,11 @@ import pdal
 import torch
 
 
-class BridgeTimeout(BaseException):
-    """Raised when a single bridge exceeds the per-bridge wall-clock timeout."""
-    pass
-
-
-def _timeout_handler(signum, frame):
-    raise BridgeTimeout()
+from src.constants import (
+    BRIDGE_DECK_ASPRS_CODE, BRIDGE_DECK_MODEL_CLASS, MIN_POINT_COUNT,
+    MODEL_TO_LAS_MAP, OBSTACLES_ASPRS_CODE, OBSTACLES_MODEL_CLASS,
+    SPATIAL_SHAPE_PADDING, BridgeTimeout, _timeout_handler,
+)
 
 # Ensure we can import the model structure
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -65,25 +63,6 @@ except ImportError:
     # Fallback if running directly from src
     from model import SparseUNet
     import spconv.pytorch as spconv
-
-
-# --- CONFIGURATION ---
-MIN_POINT_COUNT = 100          # Files with fewer points are skipped
-SPATIAL_SHAPE_PADDING = 10     # Extra voxel buffer added to spconv spatial shape to avoid
-                               # out-of-bounds during strided/transposed conv operations
-
-# Model class -> ASPRS LAS code mappings
-BRIDGE_DECK_MODEL_CLASS = 2
-BRIDGE_DECK_ASPRS_CODE = 17
-OBSTACLES_MODEL_CLASS = 3
-OBSTACLES_ASPRS_CODE = 18
-
-MODEL_TO_LAS_MAP = {
-    0: 1,                          # Background  -> Unclassified
-    1: 2,                          # Ground/Water -> Ground
-    BRIDGE_DECK_MODEL_CLASS: BRIDGE_DECK_ASPRS_CODE,   # Bridge Deck -> Bridge Deck
-    OBSTACLES_MODEL_CLASS: OBSTACLES_ASPRS_CODE,       # Obstacles   -> High Noise
-}
 
 def apply_bridge_mask(original_classification, point_labels_model):
     """Apply binary bridge deck mask: only reclassify model class 2 -> ASPRS 17.

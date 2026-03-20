@@ -28,11 +28,10 @@ import torch
 from botocore.config import Config as BotoConfig
 from botocore.exceptions import ClientError
 
-AWS_MAX_RETRIES = 3
-
 # Add project root to path so we can import from src/
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-from src.inference import BridgeTimeout, _timeout_handler, load_model, run_inference
+from src.constants import AWS_MAX_RETRIES, BridgeTimeout, _timeout_handler
+from src.inference import load_model, run_inference
 from src.s3 import (
     download_file, object_exists, parse_s3_uri, resolve_input_key,
     resolve_output_keys, upload_file,
