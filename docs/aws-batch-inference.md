@@ -441,9 +441,64 @@ terraform output
 
 ---
 
-## Local Testing (EC2 with GPU)
+## Local Inference & Testing
 
-Test the entrypoint locally before submitting to Batch:
+### Direct Inference (no S3)
+
+Use `src/inference.py` to run inference on local files without any S3 or Batch setup. The model is loaded once and reused for all files. Requires an NVIDIA GPU (spconv-cu120).
+
+**Single file, masked mode** (default — bridge deck overlaid on original lidar):
+
+```bash
+python src/inference.py \
+    --model ./experiments/bridge-base-all-data-v0/version_0/checkpoints/epoch=35.ckpt \
+    --input ./data/ml-data/testing/02050206/bridge_10598181_USGS_LPC_PA_SouthCentral_B2_2017.laz \
+    --output ./data/ml-data/predictions/bridge_10598181_bridge_masked.laz
+```
+
+**Single file, raw mode** (all model labels replace original classification):
+
+```bash
+python src/inference.py \
+    --model ./experiments/bridge-base-all-data-v0/version_0/checkpoints/epoch=35.ckpt \
+    --input ./data/ml-data/testing/02050206/bridge_10598181_USGS_LPC_PA_SouthCentral_B2_2017.laz \
+    --output ./data/ml-data/predictions/bridge_10598181_predicted.laz \
+    --mode raw
+```
+
+**Single file, both mode** (saves raw `_predicted` and masked `_bridge_masked` side by side):
+
+```bash
+python src/inference.py \
+    --model ./experiments/bridge-base-all-data-v0/version_0/checkpoints/epoch=35.ckpt \
+    --input ./data/ml-data/testing/02050206/bridge_10598181_USGS_LPC_PA_SouthCentral_B2_2017.laz \
+    --output ./data/ml-data/predictions/bridge_10598181_predicted.laz \
+    --mode both
+```
+
+With `--mode both`, the `--output` path receives the raw prediction (`_predicted.laz`) and a masked file (`_bridge_masked.laz`) is written alongside it in the same directory, deriving the name from the input file stem.
+
+**Batch mode with pairs file** (process multiple files, model loaded once):
+
+```bash
+python src/inference.py \
+    --model ./experiments/bridge-base-all-data-v0/version_0/checkpoints/epoch=35.ckpt \
+    --pairs-file ./pairs.tsv \
+    --mode masked
+```
+
+The pairs file is tab-separated with one input/output pair per line:
+
+```
+/path/to/input1.laz	/path/to/output1.laz
+/path/to/input2.laz	/path/to/output2.laz
+```
+
+For large batches, use `--bridge-timeout` to skip bridges that hang (default: 150 seconds).
+
+### Testing Batch Entrypoint Locally
+
+Test the full S3-based entrypoint locally before submitting to Batch:
 
 ```bash
 # Set env vars to simulate Batch
@@ -458,17 +513,6 @@ export AWS_BATCH_JOB_ARRAY_INDEX=0
 export INFERENCE_MODE=masked
 
 python scripts/batch_entrypoint.py
-```
-
-Or test inference directly on local files (no S3):
-
-```bash
-python src/inference.py \
-    --model /path/to/epoch=35.ckpt \
-    --input /path/to/bridge_001.laz \
-    --output /path/to/bridge_001_bridge_masked.laz \
-    --gpu \
-    --mode masked
 ```
 
 ---

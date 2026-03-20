@@ -936,7 +936,7 @@ def main():
         '--gpus',
         type=int,
         default=None,
-        help='Number of GPUs to use (0 for CPU, >0 for GPU, None for auto-detect).'
+        help='Number of GPUs to use (>0 for specific count, None for auto-detect). GPU is required.'
     )
 
     parser.add_argument(
@@ -1144,17 +1144,11 @@ def main():
             print("Note: --early-stopping requires validation; early stopping not enabled.")
 
         # Create trainer
-        # Determine accelerator and devices based on gpus argument
+        # Determine accelerator and devices — GPU required (spconv-cu120)
         if args.gpus is None:
-            # Auto-detect: will use GPU if available, otherwise CPU
-            accelerator = "auto"
+            accelerator = "gpu"
             devices = "auto"
-        elif args.gpus == 0:
-            # Explicitly use CPU
-            accelerator = "cpu"
-            devices = 1
         else:
-            # Use GPU with specified number of devices
             accelerator = "gpu"
             devices = args.gpus
 

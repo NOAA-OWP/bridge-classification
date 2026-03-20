@@ -150,7 +150,6 @@ resource "aws_batch_job_definition" "inference" {
     }
 
     environment = [
-      { name = "USE_GPU", value = "true" },
       { name = "S3_BUCKET", value = var.s3_bucket },
       { name = "S3_INPUT_PREFIX", value = var.s3_input_prefix },
       { name = "S3_MANIFEST_URI", value = var.s3_manifest_uri },

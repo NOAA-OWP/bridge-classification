@@ -164,7 +164,7 @@ Training pipeline with voxelization, data loading, and PyTorch Lightning integra
 | `--exp-name`                | `bridge_classify_base`    | Experiment name for logs/checkpoints                           |
 | `--experiments-dir`         | `./experiments`           | Base directory for experiments                                 |
 | `--class-weights`           | None                      | Path to `class_weights.json` from `calculate_weights.py`       |
-| `--gpus`                    | auto                      | Number of GPUs (`0`=CPU, `None`=auto-detect)                   |
+| `--gpus`                    | auto                      | Number of GPUs (`None`=auto-detect). GPU required.             |
 | `--early-stopping`          | False                     | Stop when monitored metric stops improving                     |
 | `--early-stopping-patience` | 10                        | Epochs to wait before early stopping                           |
 | `--monitor`                 | `val_deck_iou`            | Metric for checkpointing + early stopping                      |
@@ -218,7 +218,6 @@ Loads a trained checkpoint, classifies a raw LAS/LAZ file, and writes a classifi
 | `--pairs-file`     | None         | TSV file with input/output pairs (batch mode)        |
 | `--model`          | *(required)* | Path to `.ckpt` checkpoint                           |
 | `--voxel-size`     | 0.1          | Voxel size (must match training)                     |
-| `--gpu`            | False        | Force GPU use                                        |
 | `--bridge-timeout` | 150          | Seconds before a hung bridge is skipped (batch mode) |
 | `--mode`           | `masked`     | Output mode: `masked`, `raw`, or `both`              |
 
@@ -228,6 +227,28 @@ Loads a trained checkpoint, classifies a raw LAS/LAZ file, and writes a classifi
 - `masked` — bridge deck only (class 2 → ASPRS 17) overlaid on original classification
 - `raw` — all model classes replace original classification via `MODEL_TO_LAS_MAP`
 - `both` — saves `_predicted` (raw) and `_bridge_masked` (masked) files
+
+**Usage examples:**
+
+```bash
+# Single file, masked mode (default)
+python src/inference.py \
+    --model ./experiments/bridge-base-all-data-v0/version_0/checkpoints/epoch=35.ckpt \
+    --input ./data/ml-data/testing/02050206/bridge_10598181_USGS_LPC_PA_SouthCentral_B2_2017.laz \
+    --output ./data/ml-data/predictions/bridge_10598181_bridge_masked.laz
+
+# Batch mode with pairs file (model loaded once, processes all pairs)
+python src/inference.py \
+    --pairs-file ./pairs.tsv \
+    --model ./experiments/bridge-base-all-data-v0/version_0/checkpoints/epoch=35.ckpt \
+    --mode masked --bridge-timeout 150
+
+# Both mode (saves _predicted and _bridge_masked side by side)
+python src/inference.py \
+    --model ./experiments/bridge-base-all-data-v0/version_0/checkpoints/epoch=35.ckpt \
+    --input ./bridge.laz --output ./bridge_predicted.laz \
+    --mode both
+```
 
 ---
 
@@ -401,7 +422,7 @@ AWS Batch entrypoint — per-bridge processing loop with SPOT handling. Imports 
 
 **Required environment variables:** `S3_BUCKET`, `S3_INPUT_PREFIX`, `S3_MANIFEST_URI`, `S3_MODEL_URI`, `S3_OUTPUT_PREFIX`
 
-**Optional environment variables:** `USE_GPU` (default `true`), `INFERENCE_MODE` (default `masked`), `BRIDGE_TIMEOUT` (default `150`)
+**Optional environment variables:** `INFERENCE_MODE` (default `masked`), `BRIDGE_TIMEOUT` (default `150`)
 
 **Key features:**
 

@@ -13,7 +13,6 @@ Required env vars (set by Batch job definition, managed by Terraform):
   S3_OUTPUT_PREFIX           - S3 prefix for prediction outputs
 
 Optional env vars:
-  USE_GPU           - "true" (default) or "false"
   INFERENCE_MODE    - "masked" (default), "raw", or "both"
   BRIDGE_TIMEOUT    - per-bridge timeout in seconds (default: 150)
 """
@@ -65,7 +64,6 @@ def parse_config():
         's3_output_prefix': os.environ['S3_OUTPUT_PREFIX'],
         'job_index': int(os.environ.get('AWS_BATCH_JOB_ARRAY_INDEX', '0')),
         'array_size': int(os.environ.get('ARRAY_SIZE', '1')),
-        'use_gpu': os.environ.get('USE_GPU', 'true').lower() == 'true',
         'inference_mode': os.environ.get('INFERENCE_MODE', 'masked'),
         'bridge_timeout': float(os.environ.get('BRIDGE_TIMEOUT', '150')),
     }
@@ -143,9 +141,11 @@ def main():
     log(f"Processing lines {start+1}-{end} of {total_lines} "
         f"(chunk_size={chunk_size}, huc_ids=[{','.join(huc_ids)}])", child_index=idx)
 
-    # --- 3. Load model ---
-    use_cuda = cfg['use_gpu'] and torch.cuda.is_available()
-    device = torch.device('cuda' if use_cuda else 'cpu')
+    # --- 3. Load model — GPU required (spconv-cu120) ---
+    if not torch.cuda.is_available():
+        log("ERROR: CUDA not available. GPU is required for inference.", child_index=idx)
+        sys.exit(1)
+    device = torch.device('cuda')
     log(f"Using device: {device}", child_index=idx)
     model = load_model(str(model_path), device)
 
@@ -274,8 +274,7 @@ def main():
             cleanup(local_input, local_output)
 
             # 4h. Free GPU memory
-            if use_cuda:
-                torch.cuda.empty_cache()
+            torch.cuda.empty_cache()
 
     finally:
         signal.signal(signal.SIGALRM, old_alarm_handler)

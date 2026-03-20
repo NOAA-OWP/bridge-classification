@@ -13,12 +13,13 @@ Workflow:
    d. Map Voxel Labels -> Original Points.
    e. Save LAS file.
 
+Requires an NVIDIA GPU (spconv-cu120).
+
 Usage (single file, masked mode — bridge deck overlaid on original lidar):
     python src/inference.py \
         --input ./data/ml-data/testing/02050206/bridge_10598181_....laz \
         --output ./data/ml-data/prediction.laz \
-        --model ./experiments/bridge-base-v0/.../checkpoints/....ckpt \
-        --gpu
+        --model ./experiments/bridge-base-v0/.../checkpoints/....ckpt
 
 Usage (single file, raw mode — all model labels, old behavior):
     python src/inference.py \
@@ -28,8 +29,7 @@ Usage (batch via pairs file):
     python src/inference.py \
         --pairs-file ./pairs.tsv \
         --model ./experiments/bridge-base-v0/.../checkpoints/....ckpt \
-        --mode masked \
-        --gpu
+        --mode masked
 
     Where pairs.tsv has one tab-separated line per file:
         /path/to/input1.laz\t/path/to/output1.laz
@@ -193,7 +193,7 @@ def load_model(checkpoint_path, device):
     return model
 
 
-def run_inference(model, input_path, output_path, voxel_size=0.1, device=torch.device("cpu"), mode='masked'):
+def run_inference(model, input_path, output_path, voxel_size=0.1, device=torch.device("cuda"), mode='masked'):
     """Run inference on a single LAS/LAZ file and save the classified result.
 
     Args:
@@ -331,7 +331,7 @@ def parse_pairs_file(filepath):
     return pairs
 
 
-def run_batch_inference(model, pairs, voxel_size=0.1, device=torch.device("cpu"), bridge_timeout=150, mode='masked'):
+def run_batch_inference(model, pairs, voxel_size=0.1, device=torch.device("cuda"), bridge_timeout=150, mode='masked'):
     """Run inference on multiple input/output file pairs.
 
     Processes each pair sequentially, continuing on failure so one bad file
@@ -386,7 +386,6 @@ def main():
                         help='TSV file with input<TAB>output pairs (batch mode)')
     parser.add_argument('--model', type=str, required=True, help='Path to .pth/.ckpt checkpoint')
     parser.add_argument('--voxel-size', type=float, default=0.1, help='Voxel size (must match training)')
-    parser.add_argument('--gpu', action='store_true', help='Force use of GPU')
     parser.add_argument('--bridge-timeout', type=float, default=150,
                         help='Seconds before a hung bridge is skipped in batch mode (default: 150, supports decimals)')
     parser.add_argument('--mode', type=str, default='masked', choices=['raw', 'masked', 'both'],
@@ -401,9 +400,11 @@ def main():
     if args.pairs_file is None and (args.input is None or args.output is None):
         parser.error("Provide either --input and --output, or --pairs-file.")
 
-    # Device handling
-    use_cuda = args.gpu and torch.cuda.is_available()
-    device = torch.device("cuda" if use_cuda else "cpu")
+    # Device handling — GPU required (spconv-cu120)
+    if not torch.cuda.is_available():
+        print("ERROR: CUDA is not available. An NVIDIA GPU is required for inference (spconv-cu120).", flush=True)
+        sys.exit(1)
+    device = torch.device("cuda")
     print(f"Using device: {device}")
 
     # Load model ONCE
