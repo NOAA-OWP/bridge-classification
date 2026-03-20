@@ -75,7 +75,7 @@ from scipy.spatial import ConvexHull
 from matplotlib.path import Path as MatplotlibPath
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-from src.logging import setup_logging
+from src.logging_utils import setup_logging
 
 try:
     from tqdm import tqdm

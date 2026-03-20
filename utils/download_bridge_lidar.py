@@ -46,7 +46,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-from src.logging import setup_logging
+from src.logging_utils import setup_logging
 
 import geopandas as gpd
 import pdal
