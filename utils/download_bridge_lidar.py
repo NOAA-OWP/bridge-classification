@@ -5,12 +5,12 @@ Reads bridge geometries from GeoPackage files, finds intersecting USGS
 Entwine lidar sources, downloads the raw point cloud within a buffered
 bridge polygon, and saves as LAZ files organized by HUC.
 
-This is a lightweight alternative to src/download-and-weak-supervise-hucs.py
+This is a lightweight alternative to src/download_and_weak_supervise_hucs.py
 for bridges that only need raw lidar (e.g. for inference on not-lidar bridges).
 
 Output is **source** LAZ only: unclassified point clouds (buffer + EPT crop +
 write). This script does not run RANSAC, SMRF, or weak-supervision labeling,
-so there is no silver (classified) output. Use src/download-and-weak-supervise-hucs.py
+so there is no silver (classified) output. Use src/download_and_weak_supervise_hucs.py
 when you need both source and silver for training. Use this script when you only
 need raw lidar (e.g. for inference on not-lidar bridges or for OWP comparison).
 
@@ -65,7 +65,7 @@ logger: Optional[logging.Logger] = None
 
 
 
-# --- PDAL defaults (same as BridgeProcessingConfig in download-and-weak-supervise-hucs.py) ---
+# --- PDAL defaults (same as BridgeProcessingConfig in download_and_weak_supervise_hucs.py) ---
 EPT_REQUESTS = 3
 EPT_RESOLUTION = 0.1
 WRITER_SRS = "EPSG:3857"

@@ -28,7 +28,7 @@ from botocore.exceptions import ClientError
 
 # Add project root to path so we can import from src/
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-from src.constants import BridgeTimeout, _timeout_handler
+from src.constants import BridgeTimeout, MIN_POINT_COUNT, _timeout_handler
 from src.inference import load_model, run_inference
 from src.s3 import (
     create_s3_client, download_file, object_exists, parse_s3_uri,
@@ -150,7 +150,8 @@ def main():
     bucket = cfg['s3_bucket']
     succeeded = 0
     failed = 0
-    skipped = 0
+    skipped_exists = 0
+    skipped_too_few_points = 0
     download_failed = 0
 
     old_alarm_handler = signal.signal(signal.SIGALRM, _timeout_handler)
@@ -191,7 +192,7 @@ def main():
             if all_exist:
                 log(f"SKIP_EXISTS ({i}/{chunk_size}) manifest_line={global_line} huc={huc_id}",
                     child_index=idx, bridge_id=bridge_id)
-                skipped += 1
+                skipped_exists += 1
                 continue
 
             # 4c. Download input
@@ -219,14 +220,21 @@ def main():
                 ok = run_inference(model, local_input, local_output, voxel_size=0.1,
                                    device=device, mode=mode)
             except BridgeTimeout:
-                log(f"TIMEOUT bridge_timeout={bridge_timeout}s huc={huc_id}",
+                log(f"INFER_FAILED reason=timeout bridge_timeout={bridge_timeout}s huc={huc_id} manifest_line={global_line}",
                     child_index=idx, bridge_id=bridge_id)
                 ok = False
             finally:
                 signal.setitimer(signal.ITIMER_REAL, 0)  # cancel alarm before upload
 
+            if ok == 'skipped':
+                log(f"SKIP_SMALL_FILE points<{MIN_POINT_COUNT} huc={huc_id} manifest_line={global_line}",
+                    child_index=idx, bridge_id=bridge_id)
+                skipped_too_few_points += 1
+                cleanup(local_input, local_output)
+                continue
+
             if not ok:
-                log(f"INFER_FAILED huc={huc_id} manifest_line={global_line}",
+                log(f"INFER_FAILED reason=inference_error huc={huc_id} manifest_line={global_line}",
                     child_index=idx, bridge_id=bridge_id)
                 failed += 1
                 cleanup(local_input, local_output)
@@ -269,8 +277,8 @@ def main():
     # --- 5. Summary ---
     job_seconds = time.time() - job_start
     job_hours = job_seconds / 3600
-    log(f"SUMMARY succeeded={succeeded} failed={failed} skipped={skipped} "
-        f"download_failed={download_failed} total={chunk_size} "
+    log(f"SUMMARY succeeded={succeeded} failed={failed} skipped_exists={skipped_exists} "
+        f"skipped_too_few_points={skipped_too_few_points} download_failed={download_failed} total={chunk_size} "
         f"wall_clock_seconds={job_seconds:.0f} wall_clock_hours={job_hours:.4f}",
         child_index=idx)
 

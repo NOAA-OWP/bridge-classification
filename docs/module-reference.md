@@ -62,6 +62,22 @@ No CLI. Imported by `inference.py`, `preprocess_bridges.py`, `evaluate_model.py`
 
 ---
 
+### `src/logging_utils.py`
+
+Shared logging configuration for long-running data scripts. Provides file + console logging setup.
+
+**Functions:**
+
+
+| Function                                    | Description                                                                                       |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `setup_logging(name, log_dir='./logs')`     | Set up logging to both file (INFO+) and console (WARNING+). Returns configured logger instance.   |
+
+
+No CLI. Imported by `download_and_weak_supervise_hucs.py`, `download_bridge_lidar.py`.
+
+---
+
 ### `src/voxelization.py`
 
 Shared voxelization utilities for training and inference. Converts raw point clouds into discrete voxel grids with aggregated features.
@@ -269,9 +285,9 @@ Loads a trained checkpoint, classifies a raw LAS/LAZ file, and writes a classifi
 | `load_las(filepath)`                                             | PDAL read → returns `(points, intensities, metadata, original_arrays)` |
 | `save_las(output_path, original_arrays, labels, metadata)`       | Updates `Classification` field, writes via PDAL                        |
 | `load_model(checkpoint_path, device)`                            | Loads SparseUNet from Lightning or raw checkpoint                      |
-| `run_inference(model, input_path, output_path, ...)`             | Classify a single file. Supports `mode` parameter                      |
+| `run_inference(model, input_path, output_path, ...)`             | Classify a single file. Returns `True` (success), `False` (failure), or `'skipped'` (< `MIN_POINT_COUNT` points) |
 | `apply_bridge_mask(original_classification, point_labels_model)` | Bridge deck only mask: model class 2 → ASPRS 17 overlaid on original   |
-| `run_batch_inference(model, pairs, ...)`                         | Process multiple files with per-bridge timeout via SIGALRM             |
+| `run_batch_inference(model, pairs, ...)`                         | Process multiple files with per-bridge timeout via SIGALRM. Returns `(succeeded, failed, skipped)` |
 | `parse_pairs_file(filepath)`                                     | Parse TSV file of input/output path pairs                              |
 
 
@@ -336,6 +352,7 @@ Shared S3 utilities used by all batch scripts. Generic S3 operations and bridge-
 
 | Function                                                            | Description                                                                                    |
 | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `create_s3_client(profile=None)`                                    | Create a boto3 S3 client with adaptive retry (`AWS_MAX_RETRIES` attempts)                      |
 | `parse_s3_uri(uri)`                                                 | Split `s3://bucket/key` into `(bucket, key)` tuple                                             |
 | `object_exists(s3_client, bucket, key)`                             | Check if S3 object exists via `head_object` (returns bool)                                     |
 | `download_file(s3_client, bucket, key, local_path)`                 | Download S3 object, creating parent dirs as needed                                             |

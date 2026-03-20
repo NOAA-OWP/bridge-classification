@@ -6,8 +6,8 @@ Modes:
 - DOWNLOAD: Provide --dir to save organized HUC folders and filtered subsets.
 
 Example:
-    python utils/download-osm-hucs.py --profile esip --limit 100
-    python utils/download-osm-hucs.py --profile esip --dir ./data/osm/hucs --all
+    python utils/download_osm_hucs.py --profile esip --limit 100
+    python utils/download_osm_hucs.py --profile esip --dir ./data/osm/hucs --all
 """
 
 from __future__ import annotations
@@ -352,8 +352,8 @@ if __name__ == "__main__":
 
 # Example usage:
 # Info/dry run mode:
-#   python utils/download-osm-hucs.py --profile esip --limit 100 --save-subsets lidar
+#   python utils/download_osm_hucs.py --profile esip --limit 100 --save-subsets lidar
 # Download mode (limit 100 HUCs):
-#   python utils/download-osm-hucs.py --profile esip --dir ./data/osm/hucs --limit 100 --save-subsets lidar
+#   python utils/download_osm_hucs.py --profile esip --dir ./data/osm/hucs --limit 100 --save-subsets lidar
 # Download mode (all HUCs): (use trailing slash in prefix)
-#   python utils/download-osm-hucs.py --profile esip --dir ./data/osm/hucs --all --bucket fimc-data --prefix bridge-classification/osm/hucs/ --save-subsets not_lidar
+#   python utils/download_osm_hucs.py --profile esip --dir ./data/osm/hucs --all --bucket fimc-data --prefix bridge-classification/osm/hucs/ --save-subsets not_lidar

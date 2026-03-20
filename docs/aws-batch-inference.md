@@ -170,21 +170,36 @@ Example log lines:
 [Child 42] [bridge=bridge_10598181] INFER_START (5/150) mode=masked huc=02050206 manifest_line=6305
 [Child 42] [bridge=bridge_10598181] INFER_OK bridge_seconds=87.3s (5/150) huc=02050206
 [Child 42] [bridge=bridge_5069009] SKIP_EXISTS (6/150) manifest_line=6306 huc=03070101
-[Child 42] [bridge=bridge_9921003] TIMEOUT bridge_timeout=150s huc=02050206
-[Child 42] SUMMARY succeeded=140 failed=3 skipped=5 download_failed=2 total=150 wall_clock_seconds=14400 wall_clock_hours=4.0000
+[Child 42] [bridge=bridge_9921003] INFER_FAILED reason=timeout bridge_timeout=150s huc=02050206 manifest_line=6307
+[Child 42] [bridge=bridge_1234567] INFER_FAILED reason=inference_error huc=02050206 manifest_line=6308
+[Child 42] [bridge=bridge_8888888] SKIP_SMALL_FILE points<100 huc=03070101 manifest_line=6309
+[Child 42] SUMMARY succeeded=138 failed=3 skipped_exists=5 skipped_too_few_points=2 download_failed=2 total=150 wall_clock_seconds=14400 wall_clock_hours=4.0000
 ```
 
 **CloudWatch Insights queries:**
 
 ```
-# Find all timeouts
+# Find all failures with reason breakdown
 fields @timestamp, @message
-| filter @message like /TIMEOUT/
+| filter @message like /INFER_FAILED/
+| parse @message "reason=* " as reason
 | sort @timestamp desc
 
-# Find all failures (any type)
+# Failures by reason (timeout vs inference_error vs other)
 fields @timestamp, @message
-| filter @message like /FAILED/
+| filter @message like /INFER_FAILED/
+| parse @message "reason=* " as reason
+| stats count() by reason
+
+# Find bridges skipped due to too few points
+fields @timestamp, @message
+| filter @message like /SKIP_SMALL_FILE/
+| sort @timestamp desc
+
+# Find OOM errors (GPU out of memory)
+fields @timestamp, @message
+| filter @message like /CUDA out of memory/ or @message like /OutOfMemoryError/
+| sort @timestamp desc
 
 # Average bridge processing time per child
 fields @timestamp, @message
@@ -195,8 +210,14 @@ fields @timestamp, @message
 # Summary across all children
 fields @timestamp, @message
 | filter @message like /SUMMARY/
-| parse @message "succeeded=* failed=* skipped=* download_failed=*" as ok, fail, skip, dl_fail
-| stats sum(ok) as total_ok, sum(fail) as total_fail, sum(skip) as total_skip
+| parse @message "succeeded=* failed=* skipped_exists=* skipped_too_few_points=* download_failed=*" as ok, fail, skip_exists, skip_few_pts, dl_fail
+| stats sum(ok) as total_ok, sum(fail) as total_fail, sum(skip_exists) as total_skip_exists, sum(skip_few_pts) as total_skip_too_few_points, sum(dl_fail) as total_dl_fail
+
+# All non-success events (quick triage)
+fields @timestamp, @message
+| filter @message like /FAILED/ or @message like /TIMEOUT/ or @message like /SKIP_SMALL/
+| sort @timestamp desc
+| limit 200
 ```
 
 ```bash
@@ -544,7 +565,7 @@ All Batch resources are tagged with `Project = bridge-classifier`. Tags propagat
 
 **SPOT instance interruptions**: The job definition auto-retries up to `retry_attempts` times on SPOT interruption. Combined with skip-if-exists, retries are cheap. For critical runs with no tolerance for delay, set `use_spot = false`.
 
-**Per-bridge timeout (TIMEOUT in logs)**: A bridge exceeded `bridge_timeout` seconds during inference. Usually caused by very large point clouds. Increase `bridge_timeout` in tfvars or via `--env BRIDGE_TIMEOUT=300` at submit time.
+**Per-bridge timeout (`INFER_FAILED reason=timeout` in logs)**: A bridge exceeded `bridge_timeout` seconds during inference. Usually caused by very large point clouds. Increase `bridge_timeout` in tfvars or via `--env BRIDGE_TIMEOUT=300` at submit time.
 
 **S3 throttling (503 SlowDown)**: The S3 client uses adaptive retry (3 attempts). If you see persistent throttling, your request rate may exceed the prefix partition limit. Input files distributed across HUC prefixes naturally mitigate this.
 

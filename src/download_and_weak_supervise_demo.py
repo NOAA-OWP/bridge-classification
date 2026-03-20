@@ -8,11 +8,11 @@ and classifies points into bridge deck vs. obstacles using Z-distance
 heuristics.
 
 This script is a simplified, single-dataset version of the full HUC-based
-pipeline (download-and-weak-supervise-hucs.py). It is useful for quickly
+pipeline (download_and_weak_supervise_hucs.py). It is useful for quickly
 testing the weak supervision algorithm on a handful of known bridges.
 
 Usage:
-    python src/download-and-weak-supervise-demo.py
+    python src/download_and_weak_supervise_demo.py
 """
 
 import geopandas as gpd

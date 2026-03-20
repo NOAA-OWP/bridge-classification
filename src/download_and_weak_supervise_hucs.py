@@ -17,40 +17,40 @@ Usage Examples
 -------------
 Basic Usage:
     # Process all bridges in all HUCs with default settings
-    python src/download-and-weak-supervise-hucs.py
+    python src/download_and_weak_supervise_hucs.py
 
 Filtering by HUC:
     # Process bridges in specific HUC regions
-    python src/download-and-weak-supervise-hucs.py --hucs 01010001 01010002
+    python src/download_and_weak_supervise_hucs.py --hucs 01010001 01010002
 
 Filtering by OSM ID:
     # Process specific bridges by their OpenStreetMap IDs
-    python src/download-and-weak-supervise-hucs.py --osm-ids 123456 789012
+    python src/download_and_weak_supervise_hucs.py --osm-ids 123456 789012
 
 Custom Configuration:
     # Use custom buffer size and worker count
-    python src/download-and-weak-supervise-hucs.py --buffer 15.0 --workers 8
+    python src/download_and_weak_supervise_hucs.py --buffer 15.0 --workers 8
 
 Resume Processing:
     # Skip already processed files and bridges that previously had no lidar points (useful for resuming interrupted runs)
-    python src/download-and-weak-supervise-hucs.py --skip-existing
+    python src/download_and_weak_supervise_hucs.py --skip-existing
 
 Custom Directories:
     # Specify custom input/output directories
-    python src/download-and-weak-supervise-hucs.py \\
-        --hucs-dir ./data/osm/hucs \\
-        --source-dir ./data/ml-data/source \\
-        --silver-dir ./data/ml-data/silver_training \\
-        --lidar-resources ./data/usgs_entwine/lidar_resources.geojson \\
+    python src/download_and_weak_supervise_hucs.py \
+        --hucs-dir ./data/osm/hucs \
+        --source-dir ./data/ml-data/source \
+        --silver-dir ./data/ml-data/silver_training \
+        --lidar-resources ./data/usgs_entwine/lidar_resources.geojson \
         --log-dir ./logs
 
 Combined Options:
     # Process specific HUCs with custom settings
-    python src/download-and-weak-supervise-hucs.py \\
-        --hucs 01010001 01010002 \\
-        --buffer 12.0 \\
-        --workers 16 \\
-        --skip-existing \\
+    python src/download_and_weak_supervise_hucs.py \
+        --hucs 01010001 01010002 \
+        --buffer 12.0 \
+        --workers 16 \
+        --skip-existing \
         --no-progress
 """
 

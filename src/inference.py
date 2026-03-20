@@ -143,7 +143,8 @@ def run_inference(model, input_path, output_path, voxel_size=0.1, device=torch.d
               or 'both' (save raw to output_path and masked alongside it).
 
     Returns:
-        True if inference succeeded, False if the file was skipped or failed.
+        True if inference succeeded, False if the file failed,
+        or 'skipped' if the file was intentionally skipped (e.g. too few points).
     """
     try:
         # 1. LOAD DATA
@@ -151,8 +152,8 @@ def run_inference(model, input_path, output_path, voxel_size=0.1, device=torch.d
         raw_xyz, raw_intensity, meta, original_arrays = load_las(input_path)
 
         if len(raw_xyz) < MIN_POINT_COUNT:
-            print(f"WARN: {input_path} has < 100 points, skipping.")
-            return False
+            print(f"SKIP: {input_path} has {len(raw_xyz)} points (< {MIN_POINT_COUNT}), skipping.")
+            return 'skipped'
 
         # 2. PREPROCESS (Normalize & Voxelize)
         xyz_min = raw_xyz.min(axis=0)
@@ -273,10 +274,11 @@ def run_batch_inference(model, pairs, voxel_size=0.1, device=torch.device("cuda"
         mode: Output mode passed to run_inference. Default: 'masked'.
 
     Returns:
-        Tuple of (succeeded_count, failed_count).
+        Tuple of (succeeded_count, failed_count, skipped_count).
     """
     succeeded = 0
     failed = 0
+    skipped = 0
     total = len(pairs)
     old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
     try:
@@ -291,14 +293,16 @@ def run_batch_inference(model, pairs, voxel_size=0.1, device=torch.device("cuda"
                 ok = False
             finally:
                 signal.setitimer(signal.ITIMER_REAL, 0)  # cancel timer whether success, failure, or timeout
-            if ok:
+            if ok == 'skipped':
+                skipped += 1
+            elif ok:
                 succeeded += 1
             else:
                 failed += 1
     finally:
         signal.signal(signal.SIGALRM, old_handler)  # always restore original handler
-    print(f"\nBatch complete: {succeeded} succeeded, {failed} failed out of {total}")
-    return succeeded, failed
+    print(f"\nBatch complete: {succeeded} succeeded, {failed} failed, {skipped} skipped out of {total}")
+    return succeeded, failed, skipped
 
 
 def main():
@@ -336,12 +340,12 @@ def main():
     # Dispatch
     if args.pairs_file:
         pairs = parse_pairs_file(args.pairs_file)
-        succeeded, failed = run_batch_inference(model, pairs, args.voxel_size, device, args.bridge_timeout, mode=args.mode)
+        succeeded, failed, skipped = run_batch_inference(model, pairs, args.voxel_size, device, args.bridge_timeout, mode=args.mode)
         if failed > 0:
             sys.exit(1)
     else:
         ok = run_inference(model, args.input, args.output, args.voxel_size, device, mode=args.mode)
-        if not ok:
+        if ok == False:
             sys.exit(1)
 
 if __name__ == "__main__":
