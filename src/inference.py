@@ -37,14 +37,12 @@ Usage (batch via pairs file):
 """
 
 import argparse
-import json
 import os
 import signal
 import sys
 from pathlib import Path
 
 import numpy as np
-import pdal
 import torch
 
 
@@ -53,6 +51,7 @@ from src.constants import (
     MODEL_TO_LAS_MAP, OBSTACLES_ASPRS_CODE, OBSTACLES_MODEL_CLASS,
     SPATIAL_SHAPE_PADDING, BridgeTimeout, _timeout_handler,
 )
+from src.las_io import read_las, write_las, normalize_intensity
 
 # Ensure we can import the model structure
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -83,55 +82,18 @@ def apply_bridge_mask(original_classification, point_labels_model):
 
 def load_las(filepath):
     """Read LAS file and return XYZ + Intensity."""
-    pipeline_json = {
-        "pipeline": [
-            {
-                "type": "readers.las",
-                "filename": str(filepath)
-            }
-        ]
-    }
-    pipeline = pdal.Pipeline(json.dumps(pipeline_json))
-    pipeline.execute()
-    arrays = pipeline.arrays[0]
+    arrays, metadata = read_las(filepath)
 
-    # Extract data
-    X = arrays['X']
-    Y = arrays['Y']
-    Z = arrays['Z']
-    Intensity = arrays['Intensity']
+    points = np.stack([arrays['X'], arrays['Y'], arrays['Z']], axis=1).astype(np.float32)
+    intensities = normalize_intensity(arrays['Intensity'].astype(np.float32))
 
-    # Stack (N, 3)
-    points = np.stack([X, Y, Z], axis=1).astype(np.float32)
-    intensities = Intensity.astype(np.float32)
-
-    # Normalize Intensity (0-1) like in training
-    if intensities.max() > 0:
-        intensities /= intensities.max()
-
-    return points, intensities, pipeline.metadata, arrays
+    return points, intensities, metadata, arrays
 
 
 def save_las(output_path, original_arrays, labels, metadata):
     """Save the classified point cloud."""
-    # Ensure labels are uint8
-    classification = labels.astype(np.uint8)
-
-    # Update classification in the original array to preserve all other fields (GPS, etc.)
-    original_arrays['Classification'] = classification
-
-    writer_stage = {
-        "type": "writers.las",
-        "filename": str(output_path),
-        "extra_dims": "all",
-        "a_srs": "EPSG:3857",
-        "forward": "all",
-    }
-
-    # Execute writer pipeline
-    pipeline_json = json.dumps({"pipeline": [writer_stage]})
-    pipeline = pdal.Pipeline(pipeline_json, arrays=[original_arrays])
-    pipeline.execute()
+    original_arrays['Classification'] = labels.astype(np.uint8)
+    write_las(output_path, original_arrays)
 
 
 def load_model(checkpoint_path, device):

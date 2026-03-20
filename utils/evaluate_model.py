@@ -38,9 +38,7 @@ from src.constants import (
     LAS_TO_MODEL_MAP, NUM_CLASSES, BRIDGE_DECK_MODEL_CLASS as BRIDGE_DECK_CLASS,
     CLASS_NAMES, BridgeTimeout, _timeout_handler,
 )
-
-# Import pdal here (used in load_classifications)
-import pdal
+from src.las_io import read_las
 
 try:
     import torch
@@ -123,12 +121,7 @@ def load_classifications(filepath: Path) -> tuple:
         xyz: float32 array of shape (N, 3)
         model_labels: int32 array of shape (N,) with values 0-3
     """
-    pipeline_json = json.dumps({
-        "pipeline": [{"type": "readers.las", "filename": str(filepath)}]
-    })
-    pipeline = pdal.Pipeline(pipeline_json)
-    pipeline.execute()
-    arrays = pipeline.arrays[0]
+    arrays, _ = read_las(filepath)
 
     xyz = np.stack([
         arrays["X"].astype(np.float32),

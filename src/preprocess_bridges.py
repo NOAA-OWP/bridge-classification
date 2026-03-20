@@ -16,13 +16,13 @@ import json
 import argparse
 import multiprocessing
 import numpy as np
-import pdal
 from pathlib import Path
 from typing import Optional, Tuple, Dict, Any
 
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from src.constants import LAS_TO_MODEL_MAP
+from src.las_io import read_las, normalize_intensity
 
 try:
     from tqdm import tqdm
@@ -30,22 +30,6 @@ try:
 except ImportError:
     HAS_TQDM = False
     print("Warning: tqdm not available. Progress bars disabled.")
-
-def normalize_intensity(intensity_array: np.ndarray) -> np.ndarray:
-    """
-    Normalize intensity to 0-1 range.
-
-    Args:
-        intensity_array: Array of intensity values
-
-    Returns:
-        Normalized intensity array (0-1 range)
-    """
-    max_val = np.max(intensity_array)
-    if max_val > 0:
-        return intensity_array / max_val
-    return intensity_array
-
 
 def process_laz_file(filepath: Path, output_dir: Path, skip_existing: bool = False) -> Tuple[bool, Optional[str]]:
     """
@@ -69,22 +53,10 @@ def process_laz_file(filepath: Path, output_dir: Path, skip_existing: bool = Fal
         if npy_path.exists() and json_path.exists():
             return True, None
 
-    # 1. READ DATA USING PDAL
-    pipeline_json = {
-        "pipeline": [
-            {
-                "type": "readers.las",
-                "filename": str(filepath)
-            }
-        ]
-    }
-
     try:
-        pipeline = pdal.Pipeline(json.dumps(pipeline_json))
-        pipeline.execute()
-        arrays = pipeline.arrays[0]
+        # 1. READ DATA
+        arrays, _ = read_las(filepath)
 
-        # Extract columns
         X = arrays['X']
         Y = arrays['Y']
         Z = arrays['Z']
