@@ -11,7 +11,26 @@ Two logical groups:
 import os
 from pathlib import PurePosixPath
 
+import boto3
+from botocore.config import Config as BotoConfig
 from botocore.exceptions import ClientError
+
+from src.constants import AWS_MAX_RETRIES
+
+
+def create_s3_client(profile=None):
+    """Create a boto3 S3 client with standard retry config.
+
+    Args:
+        profile: AWS profile name (None uses default credentials).
+
+    Returns:
+        boto3 S3 client with adaptive retry (AWS_MAX_RETRIES attempts).
+    """
+    session = boto3.Session(profile_name=profile) if profile else boto3.Session()
+    return session.client('s3', config=BotoConfig(
+        retries={'max_attempts': AWS_MAX_RETRIES, 'mode': 'adaptive'}
+    ))
 
 # Extensions to try when a manifest line has no extension (most common first).
 PROBE_EXTENSIONS = ['.laz', '.las']

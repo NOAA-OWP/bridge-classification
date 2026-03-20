@@ -23,18 +23,16 @@ import sys
 import time
 from pathlib import Path, PurePosixPath
 
-import boto3
 import torch
-from botocore.config import Config as BotoConfig
 from botocore.exceptions import ClientError
 
 # Add project root to path so we can import from src/
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-from src.constants import AWS_MAX_RETRIES, BridgeTimeout, _timeout_handler
+from src.constants import BridgeTimeout, _timeout_handler
 from src.inference import load_model, run_inference
 from src.s3 import (
-    download_file, object_exists, parse_s3_uri, resolve_input_key,
-    resolve_output_keys, upload_file,
+    create_s3_client, download_file, object_exists, parse_s3_uri,
+    resolve_input_key, resolve_output_keys, upload_file,
 )
 
 
@@ -95,9 +93,7 @@ def main():
     cfg = parse_config()
     idx = cfg['job_index']
 
-    s3 = boto3.client('s3', config=BotoConfig(
-        retries={'max_attempts': AWS_MAX_RETRIES, 'mode': 'adaptive'}
-    ))
+    s3 = create_s3_client()
 
     # --- SIGTERM handler for SPOT interruptions ---
     shutdown_requested = False

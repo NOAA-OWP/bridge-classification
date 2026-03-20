@@ -35,24 +35,14 @@ import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-import boto3
-from botocore.config import Config as BotoConfig
-
 # Add project root to path so we can import from src/
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-from src.constants import AWS_MAX_RETRIES
 from src.s3 import (
-    object_exists, resolve_extension, resolve_output_keys,
+    create_s3_client, object_exists, resolve_extension, resolve_output_keys,
     stream_manifest_lines,
 )
 
 DEFAULT_WORKERS = 200
-
-
-def _make_session(profile):
-    """Create a boto3 session (called once per thread via threading.local)."""
-    session = boto3.Session(profile_name=profile) if profile else boto3.Session()
-    return session.client('s3', config=BotoConfig(retries={'max_attempts': AWS_MAX_RETRIES, 'mode': 'adaptive'}))
 
 
 def check_line(thread_local, profile, bucket, input_prefix, output_prefix, mode, line):
@@ -64,7 +54,7 @@ def check_line(thread_local, profile, bucket, input_prefix, output_prefix, mode,
         (line, all_exist) tuple.
     """
     if not hasattr(thread_local, 's3'):
-        thread_local.s3 = _make_session(profile)
+        thread_local.s3 = create_s3_client(profile)
     s3 = thread_local.s3
 
     ext = resolve_extension(s3, bucket, input_prefix, line) if input_prefix else '.laz'
@@ -88,8 +78,7 @@ def main():
     args = parser.parse_args()
 
     # Use a single session only for reading the manifest (single-threaded)
-    session = boto3.Session(profile_name=args.profile) if args.profile else boto3.Session()
-    s3_main = session.client('s3', config=BotoConfig(retries={'max_attempts': 3, 'mode': 'adaptive'}))
+    s3_main = create_s3_client(args.profile)
 
     # Read manifest
     lines = list(stream_manifest_lines(s3_main, args.manifest))
