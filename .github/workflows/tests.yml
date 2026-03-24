@@ -1,0 +1,30 @@
+name: Tests
+
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - 'src/**'
+      - 'scripts/**'
+      - 'utils/**'
+      - 'tests/**'
+  pull_request:
+    branches: [main]
+
+jobs:
+  tests:
+    name: Tests (runs anywhere - no GPU, no PDAL required)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements-test.txt
+
+      - name: Run tests
+        run: python -m pytest tests/ -v --tb=short

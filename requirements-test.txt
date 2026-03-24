@@ -1,0 +1,7 @@
+# Minimal dependencies for tests
+# runs anywhere - no PDAL, no torch, no spconv, no conda required.
+pytest>=7.0
+pytest-cov
+numpy
+boto3
+botocore
