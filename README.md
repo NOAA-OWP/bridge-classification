@@ -8,6 +8,7 @@ A comprehensive pipeline for processing bridge lidar data organized by Hydrologi
 - [Project Overview](#project-overview)
 - [Pipeline Overview](#pipeline-overview)
 - [Installation](#installation)
+- [Testing](#testing)
 - [Troubleshooting](#troubleshooting)
 - [Data Download](#data-download)
 - [Classification Labels for Training](#classification-labels-for-training)
@@ -327,6 +328,17 @@ mamba install numpy=1.26.4
 ```
 
 See [Troubleshooting](#troubleshooting) for libstdc++ and other issues.
+
+## Testing
+
+Install test dependencies and run the suite:
+
+```bash
+pip install -r requirements-test.txt
+python -m pytest tests/ -v
+```
+
+Tests run in seconds and require only numpy + boto3 (no GPU, PDAL, or conda). CI runs automatically on push to main/dev and on PRs via GitHub Actions.
 
 ## Troubleshooting
 
