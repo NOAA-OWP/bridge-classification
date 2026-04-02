@@ -8,6 +8,7 @@ A comprehensive pipeline for processing bridge lidar data organized by Hydrologi
 - [Project Overview](#project-overview)
 - [Pipeline Overview](#pipeline-overview)
 - [Installation](#installation)
+- [Model Registry](#model-registry)
 - [Testing](#testing)
 - [Troubleshooting](#troubleshooting)
 - [Data Download](#data-download)
@@ -236,6 +237,8 @@ docker compose run --rm \
 - **`--monitor`**: Metric used for best-model checkpointing and early stopping (default: `val_deck_iou`). Use `val_deck_iou` to optimize for deck IoU, or `val_loss` for validation loss. When no validation data is used, `train_loss` is used instead.
 - **`--early-stopping`**: Stop training when the monitored metric does not improve.
 - **`--early-stopping-patience`**: Number of epochs to wait with no improvement before stopping (default: 10). Used only when `--early-stopping` is set.
+- **`--dice-loss`**: Use combined Dice + CrossEntropy loss (`0.5*CE + 0.5*Dice`) instead of CE only. Dice loss directly optimizes IoU (the target metric) and handles class imbalance naturally. Recommended for fine-tuning on small gold datasets.
+- **`--augment-extra`**: Enable extra augmentation on top of `--augment`: random XY-flip, random scaling (0.9–1.1x), intensity jitter, and random point dropout (5–10%). Requires `--augment`. Recommended when training on small datasets to increase effective sample diversity.
 - **`--ckpt-path`**: Path to a checkpoint to resume training (e.g. `.../checkpoints/last.ckpt`). Use a new `--exp-name` for the resumed run so logs and checkpoints go to a separate experiment directory; the original run is left unchanged.
 
 Example: train with early stopping on deck IoU (default), or on validation loss for comparison:
@@ -328,6 +331,39 @@ mamba install numpy=1.26.4
 ```
 
 See [Troubleshooting](#troubleshooting) for libstdc++ and other issues.
+
+## Model Registry
+
+Trained models are tracked in an S3-based registry (`registry.json`) for experiment lineage and promotion to production.
+
+**Register a model** (uploads best checkpoint + config to S3):
+
+```bash
+python utils/register_model.py \
+  --exp-dir ./experiments/bridge-base-all-data-v3/version_0 \
+  --name bridge-base-all-data-v3 \
+  --description "Silver-only training, 477K bridges, base_channels=16, 0.1m voxel" \
+  --bucket fimc-data --prefix bridge-classification/models
+```
+
+**Register a fine-tuned model** (with parent lineage):
+
+```bash
+python utils/register_model.py \
+  --exp-dir ./experiments/ft-gold-optA-v0/version_0 \
+  --name ft-gold-optA-v0 \
+  --description "Fine-tuned from v3, frozen encoder, gold data" \
+  --parent bridge-base-all-data-v3 \
+  --bucket fimc-data --prefix bridge-classification/models
+```
+
+**Inspect the registry:**
+
+```bash
+aws s3 cp s3://fimc-data/bridge-classification/models/registry.json - --profile test-se | python -m json.tool
+```
+
+The registry stores model metadata (config, lineage, evaluation results) and follows a stage lifecycle: `experimental` → `evaluated` → `staging` → `production`. See `plan/mlops-model-registry-plan.md` for the full design.
 
 ## Testing
 

@@ -123,7 +123,7 @@ resource "aws_batch_job_definition" "inference" {
   }
 
   container_properties = jsonencode({
-    image      = "${aws_ecr_repository.inference.repository_url}:latest"
+    image      = "${aws_ecr_repository.inference.repository_url}:${var.image_tag}"
     vcpus      = var.job_vcpus
     memory     = var.job_memory
     jobRoleArn = var.batch_job_role_arn

@@ -220,8 +220,9 @@ Training pipeline with voxelization, data loading, and PyTorch Lightning integra
 
 | Class                                                      | Description                                                                       |
 | ---------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| `BridgeDataset(data_dir, voxel_size, augment, max_voxels)` | Dataset with on-the-fly voxelization. Recursively finds `.npy` files.             |
-| `BridgeLightningModule(...)`                               | Lightning module. Weighted CrossEntropyLoss, logs deck IoU/precision/recall.      |
+| `BridgeDataset(data_dir, voxel_size, augment, augment_extra, max_voxels)` | Dataset with on-the-fly voxelization. Recursively finds `.npy` files. |
+| `DiceLoss(num_classes, smooth)`                            | Per-class Dice loss averaged across classes. Directly optimizes IoU.              |
+| `BridgeLightningModule(...)`                               | Lightning module. CrossEntropyLoss (default) or combined Dice+CE loss (`--dice-loss`). Logs deck IoU/precision/recall. |
 | `BridgeDataModule(train_dir, val_dir, ...)`                | Lightning data module. Supports explicit `val_dir` or `val_split` on `train_dir`. |
 
 
@@ -247,6 +248,8 @@ Training pipeline with voxelization, data loading, and PyTorch Lightning integra
 | `--max-voxels`              | None                      | Max voxels per sample; subsampled if exceeded (OOM prevention) |
 | `--batch-size`              | 16                        | Batch size                                                     |
 | `--augment`                 | False                     | Enable random Z-rotation + jitter                              |
+| `--augment-extra`           | False                     | Extra augmentation: XY-flip, scaling, intensity jitter, point dropout. Requires `--augment` |
+| `--dice-loss`               | False                     | Use combined Dice + CrossEntropy loss (0.5\*CE + 0.5\*Dice)   |
 | `--train`                   | False                     | Enable training mode                                           |
 | `--epochs`                  | 50                        | Training epochs                                                |
 | `--learning-rate`           | 0.001                     | AdamW learning rate                                            |
@@ -284,7 +287,7 @@ Loads a trained checkpoint, classifies a raw LAS/LAZ file, and writes a classifi
 | ---------------------------------------------------------------- | ---------------------------------------------------------------------- |
 | `load_las(filepath)`                                             | PDAL read → returns `(points, intensities, metadata, original_arrays)` |
 | `save_las(output_path, original_arrays, labels, metadata)`       | Updates `Classification` field, writes via PDAL                        |
-| `load_model(checkpoint_path, device)`                            | Loads SparseUNet from Lightning or raw checkpoint                      |
+| `load_model(checkpoint_path, device)`                            | Loads SparseUNet from Lightning or raw checkpoint. Auto-detects `base_channels` from checkpoint `hyper_parameters` (falls back to 16). |
 | `run_inference(model, input_path, output_path, ...)`             | Classify a single file. Returns `True` (success), `False` (failure), or `'skipped'` (< `MIN_POINT_COUNT` points) |
 | `apply_bridge_mask(original_classification, point_labels_model)` | Bridge deck only mask: model class 2 → ASPRS 17 overlaid on original   |
 | `run_batch_inference(model, pairs, ...)`                         | Process multiple files with per-bridge timeout via SIGALRM. Returns `(succeeded, failed, skipped)` |
@@ -495,6 +498,59 @@ Verifies RANSAC determinism across platforms using synthetic bridge data.
 
 
 No CLI arguments. Run directly: `python utils/verify_ransac_parity.py`
+
+---
+
+### `utils/register_model.py`
+
+Registers a trained model to the S3-based model registry. Uploads the best checkpoint + config files from a Lightning experiment directory, creates lineage tracking for fine-tuned models, and manages `registry.json`.
+
+**Key functions:**
+
+
+| Function                                       | Description                                                                |
+| ---------------------------------------------- | -------------------------------------------------------------------------- |
+| `find_best_checkpoint(checkpoints_dir)`         | Finds best checkpoint by metric value in filename (highest IoU/acc, lowest loss) |
+| `load_registry(s3_client, bucket, registry_key)` | Downloads `registry.json` from S3 or returns skeleton if not found        |
+| `upload_registry(s3_client, bucket, registry_key, registry)` | Writes registry to temp file and uploads to S3               |
+
+
+**CLI arguments:**
+
+
+| Argument        | Default    | Description                                              |
+| --------------- | ---------- | -------------------------------------------------------- |
+| `--exp-dir`     | *(required)* | Path to Lightning experiment version directory          |
+| `--checkpoint`  | `best`     | `best`, `last`, or a specific checkpoint filename        |
+| `--name`        | *(required)* | Model name for the registry                            |
+| `--description` | *(required)* | Human-readable description                             |
+| `--parent`      | None       | Parent model name (for fine-tuned experiments)           |
+| `--bucket`      | *(required)* | S3 bucket                                              |
+| `--prefix`      | *(required)* | S3 prefix (e.g. `bridge-classification/models`)        |
+| `--profile`     | None       | AWS profile name                                         |
+
+
+---
+
+### `utils/extract_complex_bridges.py`
+
+Extracts curved/arched bridge rejections from processing logs. Parses logs for bridges rejected by the RANSAC linearity check, deduplicates, excludes bridges already in training data, and produces a full CSV + a stratified random sample.
+
+**CLI arguments:**
+
+
+| Argument           | Default                               | Description                                              |
+| ------------------ | ------------------------------------- | -------------------------------------------------------- |
+| `--log-dirs`       | *(required)*                          | Directory(ies) containing processing log files           |
+| `--exclude-ids`    | None                                  | ID files to exclude (train/val/test split files)         |
+| `--source-s3-uri`  | None                                  | S3 URI prefix for source files (verifies existence)      |
+| `--profile`        | None                                  | AWS profile name                                         |
+| `--output`         | `complex_bridges_all.csv`             | Output CSV of all unique complex bridges                 |
+| `--sample-output`  | `complex_bridges_sample_50.csv`       | Output CSV of stratified sample                          |
+| `--sample-size`    | 50                                    | Number of bridges to sample                              |
+| `--max-per-huc`    | 2                                     | Maximum bridges per HUC in the sample                    |
+| `--seed`           | 27                                    | Random seed for reproducibility                          |
+
 
 ---
 

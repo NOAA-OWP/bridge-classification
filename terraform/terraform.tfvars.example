@@ -31,6 +31,9 @@ s3_manifest_uri  = "s3://your-bucket/path/to/manifest.txt"
 s3_model_uri     = "s3://your-bucket/path/to/model.ckpt"
 s3_output_prefix = "path/to/predictions"
 
+# Container image
+image_tag = "latest"  # Pin to a specific tag to avoid breaking in-flight batch runs
+
 # Inference runtime (defaults shown — override at submit time via --env if needed)
 inference_mode = "masked"  # "masked", "raw", or "both"
 bridge_timeout = 150       # per-bridge timeout in seconds

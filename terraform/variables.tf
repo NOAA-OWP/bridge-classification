@@ -137,6 +137,15 @@ variable "s3_output_prefix" {
 }
 
 # -----------------------------------------------------------------------------
+# Container Image
+# -----------------------------------------------------------------------------
+variable "image_tag" {
+  description = "Docker image tag for the inference container (pin to avoid breaking in-flight jobs)"
+  type        = string
+  default     = "latest"
+}
+
+# -----------------------------------------------------------------------------
 # Inference Runtime
 # -----------------------------------------------------------------------------
 variable "inference_mode" {

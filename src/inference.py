@@ -106,10 +106,17 @@ def load_model(checkpoint_path, device):
         SparseUNet model in eval mode on the specified device.
     """
     print(f"Loading model from {checkpoint_path}...")
-    model = SparseUNet(input_channels=1, num_classes=4, base_channels=16)
 
     # Load weights
     checkpoint = torch.load(checkpoint_path, map_location=device)
+
+    # Auto-detect base_channels from Lightning checkpoint metadata
+    base_channels = 16
+    if 'hyper_parameters' in checkpoint:
+        base_channels = checkpoint['hyper_parameters'].get('base_channels', 16)
+    print(f"  base_channels={base_channels}")
+
+    model = SparseUNet(input_channels=1, num_classes=4, base_channels=base_channels)
 
     # Handle Lightning Checkpoint vs Raw State Dict
     # Filter Lightning keys (remove 'class_weights', 'criterion', etc.)

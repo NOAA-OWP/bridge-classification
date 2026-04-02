@@ -32,6 +32,7 @@ import sys
 import json
 import shutil
 import shlex
+import subprocess
 import argparse
 from pathlib import Path
 from typing import Dict, Tuple, List, Optional
@@ -88,7 +89,7 @@ class BridgeDataset(Dataset):
     points within voxels using majority vote for labels and averaging for features.
     """
 
-    def __init__(self, data_dir: str, voxel_size: float = 0.1, augment: bool = False, max_voxels: Optional[int] = None):
+    def __init__(self, data_dir: str, voxel_size: float = 0.1, augment: bool = False, augment_extra: bool = False, max_voxels: Optional[int] = None):
         """
         Args:
             data_dir: Path to directory containing .npy files (can be HUC-organized)
@@ -99,6 +100,7 @@ class BridgeDataset(Dataset):
         self.data_dir = Path(data_dir)
         self.voxel_size = voxel_size
         self.augment = augment
+        self.augment_extra = augment_extra
         self.max_voxels = max_voxels
 
         # Recursively find all .npy files (handles HUC folder structure)
@@ -158,6 +160,32 @@ class BridgeDataset(Dataset):
 
             # Re-shift to positive after rotation (rotation can make things negative again)
             xyz -= xyz.min(axis=0)
+
+            if self.augment_extra:
+                # Random XY-flip
+                if np.random.random() > 0.5:
+                    xyz[:, 0] = -xyz[:, 0]
+                if np.random.random() > 0.5:
+                    xyz[:, 1] = -xyz[:, 1]
+
+                # Random scaling (0.9-1.1x)
+                scale = np.random.uniform(0.9, 1.1)
+                xyz *= scale
+
+                # Intensity jitter
+                feat = feat + np.random.normal(0, 0.02, size=feat.shape).astype(np.float32)
+                feat = np.clip(feat, 0.0, 1.0)
+
+                # Random point dropout (5-10%)
+                dropout_rate = np.random.uniform(0.05, 0.10)
+                keep_mask = np.random.random(len(xyz)) > dropout_rate
+                if keep_mask.sum() > 10:
+                    xyz = xyz[keep_mask]
+                    feat = feat[keep_mask]
+                    labels = labels[keep_mask]
+
+                # Re-shift to positive after flips/scaling
+                xyz -= xyz.min(axis=0)
 
         # 3. Voxelization + feature/label aggregation
         result = voxelize(xyz, self.voxel_size, feat, labels)
@@ -224,6 +252,22 @@ def sparse_collate_fn(batch: List[Tuple[np.ndarray, np.ndarray, np.ndarray]]) ->
 if HAS_LIGHTNING:
     import spconv.pytorch as spconv
 
+    class DiceLoss(nn.Module):
+        """Per-class Dice loss averaged across classes. Directly optimizes overlap (IoU proxy)."""
+
+        def __init__(self, num_classes=4, smooth=1.0):
+            super().__init__()
+            self.num_classes = num_classes
+            self.smooth = smooth
+
+        def forward(self, logits, targets):
+            probs = torch.softmax(logits, dim=1)
+            targets_onehot = torch.nn.functional.one_hot(targets, self.num_classes).float()
+            intersection = (probs * targets_onehot).sum(dim=0)
+            cardinality = probs.sum(dim=0) + targets_onehot.sum(dim=0)
+            dice_per_class = (2.0 * intersection + self.smooth) / (cardinality + self.smooth)
+            return 1.0 - dice_per_class.mean()
+
     class BridgeLightningModule(LightningModule):
         """
         PyTorch Lightning module for bridge classification training.
@@ -239,6 +283,7 @@ if HAS_LIGHTNING:
             class_weights=None,
             monitor='val_loss',
             monitor_mode='min',
+            use_dice_loss=False,
         ):
             """
             Args:
@@ -273,6 +318,9 @@ if HAS_LIGHTNING:
 
             self.register_buffer('class_weights', torch.tensor(class_weights, dtype=torch.float32))
             self.criterion = nn.CrossEntropyLoss(weight=self.class_weights)
+            self.use_dice_loss = use_dice_loss
+            if use_dice_loss:
+                self.dice_criterion = DiceLoss(num_classes=num_classes)
 
         def forward(self, x):
             """Forward pass."""
@@ -323,7 +371,12 @@ if HAS_LIGHTNING:
                 # Forward pass
                 output = self.model(input_sp_tensor)  # (N, num_classes)
                 # Loss calculation
-                loss = self.criterion(output, labels)
+                ce_loss = self.criterion(output, labels)
+                if self.use_dice_loss:
+                    dice_loss = self.dice_criterion(output, labels)
+                    loss = 0.5 * ce_loss + 0.5 * dice_loss
+                else:
+                    loss = ce_loss
 
                 # Calculate Metrics
                 preds = torch.argmax(output, dim=1)
@@ -422,6 +475,7 @@ if HAS_LIGHTNING:
             batch_size: int = 4,
             num_workers: int = 4,
             augment: bool = True,
+            augment_extra: bool = False,
             val_split: float = 0.0,
             max_voxels: Optional[int] = None,
         ):
@@ -433,6 +487,7 @@ if HAS_LIGHTNING:
                 batch_size: Batch size (default: 4)
                 num_workers: Number of data loader workers (default: 4)
                 augment: Whether to apply augmentation (default: True)
+                augment_extra: Whether to apply extra augmentation (default: False)
                 val_split: Validation split ratio when val_dir is not set (default: 0.0, no validation)
                 max_voxels: Maximum voxels per sample (default: None = no limit)
             """
@@ -443,6 +498,7 @@ if HAS_LIGHTNING:
             self.batch_size = batch_size
             self.num_workers = num_workers
             self.augment = augment
+            self.augment_extra = augment_extra
             self.val_split = val_split
             self.max_voxels = max_voxels
 
@@ -469,6 +525,7 @@ if HAS_LIGHTNING:
                             self.train_dir,
                             voxel_size=self.voxel_size,
                             augment=self.augment,
+                            augment_extra=self.augment_extra,
                             max_voxels=self.max_voxels,
                         )
                         self.val_dataset = BridgeDataset(
@@ -482,6 +539,7 @@ if HAS_LIGHTNING:
                             self.train_dir,
                             voxel_size=self.voxel_size,
                             augment=self.augment,
+                            augment_extra=self.augment_extra,
                             max_voxels=self.max_voxels,
                         )
                         self.val_dataset = None
@@ -497,6 +555,7 @@ if HAS_LIGHTNING:
                         self.train_dir,
                         voxel_size=self.voxel_size,
                         augment=self.augment,
+                        augment_extra=self.augment_extra,
                         max_voxels=self.max_voxels,
                     )
                     self.train_dataset.files = [full_dataset.files[i] for i in train_indices]
@@ -512,6 +571,7 @@ if HAS_LIGHTNING:
                         self.train_dir,
                         voxel_size=self.voxel_size,
                         augment=self.augment,
+                        augment_extra=self.augment_extra,
                         max_voxels=self.max_voxels,
                     )
                     self.val_dataset = None
@@ -803,6 +863,20 @@ def main():
         help='Enable data augmentation (random rotation and jitter)'
     )
 
+    parser.add_argument(
+        '--augment-extra',
+        action='store_true',
+        default=False,
+        help='Enable extra augmentation: XY-flip, scaling, intensity jitter, point dropout (requires --augment)'
+    )
+
+    parser.add_argument(
+        '--dice-loss',
+        action='store_true',
+        default=False,
+        help='Use combined Dice + CrossEntropy loss (0.5*CE + 0.5*Dice). Default: CE only.'
+    )
+
     # Training arguments
     parser.add_argument(
         '--train',
@@ -1000,6 +1074,7 @@ def main():
             batch_size=args.batch_size,
             num_workers=args.num_workers,
             augment=args.augment,
+            augment_extra=args.augment_extra,
             val_split=args.val_split,
             max_voxels=args.max_voxels,
         )
@@ -1014,6 +1089,7 @@ def main():
             class_weights=class_weights_list,
             monitor=effective_monitor,
             monitor_mode=monitor_mode,
+            use_dice_loss=args.dice_loss,
         )
 
         # Logger: TensorBoard
@@ -1041,8 +1117,17 @@ def main():
                 json.dump({"weights": weights_used, "source": "built-in default"}, f, indent=2)
 
         # Save full run config and command line for reproducibility
+        try:
+            git_hash = subprocess.check_output(
+                ['git', 'rev-parse', '--short', 'HEAD'],
+                stderr=subprocess.DEVNULL
+            ).decode().strip()
+        except Exception:
+            git_hash = "unknown"
+        config_dict = vars(args)
+        config_dict['git_commit'] = git_hash
         with open(log_dir / "train_config.json", "w") as f:
-            json.dump(vars(args), f, indent=2)
+            json.dump(config_dict, f, indent=2)
         with open(log_dir / "run_command.txt", "w") as f:
             f.write(sys.executable + " " + " ".join(shlex.quote(a) for a in sys.argv) + "\n")
 
