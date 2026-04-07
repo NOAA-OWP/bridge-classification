@@ -503,7 +503,7 @@ No CLI arguments. Run directly: `python utils/verify_ransac_parity.py`
 
 ### `utils/register_model.py`
 
-Registers a trained model to the S3-based model registry. Uploads the best checkpoint + config files from a Lightning experiment directory, creates lineage tracking for fine-tuned models, and manages `registry.json`.
+Registers a trained model to the S3-based model registry. Uploads the best checkpoint + config files from a Lightning experiment directory, creates lineage tracking for fine-tuned models, and manages `registry.json`. After registration, use `evaluate_model.py --register` to populate the evaluation field with metrics.
 
 **Key functions:**
 
@@ -529,6 +529,80 @@ Registers a trained model to the S3-based model registry. Uploads the best check
 | `--prefix`      | *(required)* | S3 prefix (e.g. `bridge-classification/models`)        |
 | `--profile`     | None       | AWS profile name                                         |
 
+
+---
+
+### `utils/evaluate_model.py`
+
+Evaluates a trained bridge classification model against human-annotated (gold) data. Reports metrics for both model predictions and silver (auto-labeled) baseline. Supports two modes: running inference from a checkpoint (`--model`) or evaluating pre-computed predictions (`--inference-dir`). Optionally updates the S3 model registry with evaluation metrics (`--register`).
+
+**Key functions:**
+
+
+| Function                                          | Description                                                                |
+| ------------------------------------------------- | -------------------------------------------------------------------------- |
+| `evaluate_bridge(gold_labels, pred_labels)`        | Computes confusion matrix, per-class metrics, binary metrics for one bridge |
+| `aggregate_metrics(results_list)`                  | Point-weighted aggregation across bridges (micro-averaging)                |
+| `_register_evaluation(model_name, eval_name, ...)`| Updates registry.json with eval metrics, uploads artifacts to S3           |
+
+
+**CLI arguments:**
+
+
+| Argument           | Default                        | Description                                                           |
+| ------------------ | ------------------------------ | --------------------------------------------------------------------- |
+| `--gold-dir`       | *(required)*                   | Gold (human-annotated) data directory (HUC-organized LAS/LAZ)         |
+| `--test-dir`       | *(required)*                   | Test data directory with silver LAZ files                             |
+| `--model`          | None                           | Path to .ckpt checkpoint (required if `--inference-dir` not provided) |
+| `--inference-dir`  | None                           | Pre-computed inference output directory (skips running model)         |
+| `--output-dir`     | `./evaluation_results`         | Output directory for results                                          |
+| `--device`         | `auto`                         | Device for inference (`cpu`, `cuda`, `auto`)                          |
+| `--voxel-size`     | 0.1                            | Voxel size in meters, must match training                             |
+| `--bridge-timeout` | 150                            | Per-bridge inference timeout in seconds                               |
+| `--no-plot`        | False                          | Skip confusion matrix PNG generation                                  |
+| `--register`       | False                          | Update model registry with evaluation metrics                         |
+| `--model-name`     | None                           | Registry model name (required with `--register`)                      |
+| `--eval-name`      | `gold-{N}`                     | Evaluation set name for registry key                                  |
+| `--bucket`         | `fimc-data`                    | S3 bucket                                                             |
+| `--prefix`         | `bridge-classification/models` | S3 prefix                                                             |
+| `--profile`        | None                           | AWS profile name                                                      |
+
+
+**Outputs:**
+
+- `evaluation_metrics.json` — aggregate metrics (per-class, binary, overall)
+- `per_bridge_metrics.csv` — one row per bridge with all metrics
+- `confusion_matrix.png` — 4-class confusion matrices (model vs silver)
+- `confusion_matrix_binary.png` — binary confusion matrices (bridge vs non-bridge)
+
+**Usage examples:**
+
+```bash
+# Full evaluation with inference (GPU)
+python utils/evaluate_model.py \
+    --gold-dir ./data/ml-data/gold-data \
+    --test-dir ./data/ml-data/testing \
+    --model ./experiments/bridge-base-all-data-v3/version_0/checkpoints/best.ckpt \
+    --output-dir ./evaluation_results/
+
+# Pre-computed inference (no GPU)
+python utils/evaluate_model.py \
+    --gold-dir ./data/ml-data/gold-data \
+    --test-dir ./data/ml-data/testing \
+    --inference-dir ./evaluation_results/v3/inference_output \
+    --output-dir ./evaluation_results/v3
+
+# Evaluate and register results to S3 model registry
+python utils/evaluate_model.py \
+    --gold-dir ./data/ml-data/gold-data \
+    --test-dir ./data/ml-data/testing \
+    --inference-dir ./evaluation_results/v3/inference_output \
+    --output-dir ./evaluation_results/v3 \
+    --register --model-name bridge-base-all-data-v3 \
+    --bucket bucket-name \
+    --prefix prefix-name/models \
+    --profile aws-profile
+```
 
 ---
 

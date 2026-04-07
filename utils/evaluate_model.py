@@ -521,6 +521,62 @@ def save_outputs(model_agg: dict, silver_agg: dict, bridge_results: list,
 
 
 # ---------------------------------------------------------------------------
+# Registry integration
+# ---------------------------------------------------------------------------
+
+def _register_evaluation(model_name, eval_name, model_metrics, output_dir,
+                         bucket, prefix, profile):
+    """Update registry.json with evaluation metrics and upload artifacts to S3."""
+    # Lazy imports — only needed when --register is used
+    sys.path.insert(0, os.path.dirname(__file__))
+    from register_model import load_registry, upload_registry
+    from src.s3 import create_s3_client, upload_file
+
+    registry_key = f"{prefix}/registry.json"
+    s3_client = create_s3_client(profile=profile)
+    registry = load_registry(s3_client, bucket, registry_key)
+
+    if model_name not in registry["models"]:
+        print(f"ERROR: model '{model_name}' not found in registry")
+        print(f"  Available: {', '.join(sorted(registry['models'].keys()))}")
+        sys.exit(1)
+
+    deck = model_metrics["per_class"][BRIDGE_DECK_CLASS]
+    eval_entry = {
+        "bridge_deck_iou": round(deck["iou"], 1),
+        "bridge_deck_precision": round(deck["precision"], 1),
+        "bridge_deck_recall": round(deck["recall"], 1),
+        "bridge_deck_f1": round(deck["f1"], 1),
+        "overall_accuracy": round(model_metrics["overall_accuracy"], 1),
+        "mean_iou": round(model_metrics["mean_iou"], 1),
+        "eval_bridges": model_metrics["total_bridges"],
+    }
+
+    entry = registry["models"][model_name]
+    entry["evaluation"][eval_name] = eval_entry
+    if entry.get("stage") == "experimental":
+        entry["stage"] = "evaluated"
+
+    # Upload eval artifacts to S3
+    s3_eval_prefix = f"{prefix}/{model_name}/evaluation/{eval_name}"
+    output_dir = Path(output_dir)
+    for filename in ["evaluation_metrics.json", "confusion_matrix.png",
+                     "confusion_matrix_binary.png", "per_bridge_metrics.csv",
+                     "per_bridge_metrics.xlsx"]:
+        local_path = output_dir / filename
+        if local_path.exists():
+            s3_key = f"{s3_eval_prefix}/{filename}"
+            print(f"Uploading {filename} -> s3://{bucket}/{s3_key}")
+            upload_file(s3_client, str(local_path), bucket, s3_key)
+
+    upload_registry(s3_client, bucket, registry_key, registry)
+
+    print(f"\nRegistry updated: {model_name} [{eval_name}]")
+    print(f"  bridge_deck_iou: {eval_entry['bridge_deck_iou']}")
+    print(f"  stage: {entry['stage']}")
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
@@ -569,10 +625,25 @@ def main():
                         help="Per-bridge inference timeout in seconds (default: 150)")
     parser.add_argument("--no-plot", action="store_true",
                         help="Skip confusion matrix PNG")
+    # Registry integration
+    parser.add_argument("--register", action="store_true",
+                        help="Update model registry with evaluation metrics")
+    parser.add_argument("--model-name", type=str, default=None,
+                        help="Registry model name (required with --register)")
+    parser.add_argument("--eval-name", type=str, default=None,
+                        help="Evaluation set name for registry key (default: gold-{N})")
+    parser.add_argument("--bucket", type=str, default="fimc-data",
+                        help="S3 bucket (default: fimc-data)")
+    parser.add_argument("--prefix", type=str, default="bridge-classification/models",
+                        help="S3 prefix (default: bridge-classification/models)")
+    parser.add_argument("--profile", type=str, default=None,
+                        help="AWS profile name")
     args = parser.parse_args()
 
     if args.inference_dir is None and args.model is None:
         parser.error("--model is required when --inference-dir is not provided")
+    if args.register and not args.model_name:
+        parser.error("--model-name is required when --register is set")
     if not HAS_SKLEARN:
         print("ERROR: scikit-learn is required. Install it with: pip install scikit-learn")
         sys.exit(1)
@@ -749,6 +820,18 @@ def main():
     if args.inference_dir is None:
         print(f"\nInference outputs saved to: {inference_output_dir}")
         print(f"Tip: Re-run with --inference-dir {inference_output_dir} to skip inference.")
+
+    if args.register and model_agg:
+        eval_name = args.eval_name or f"gold-{model_agg['total_bridges']}"
+        _register_evaluation(
+            model_name=args.model_name,
+            eval_name=eval_name,
+            model_metrics=model_agg,
+            output_dir=args.output_dir,
+            bucket=args.bucket,
+            prefix=args.prefix,
+            profile=args.profile,
+        )
 
 
 if __name__ == "__main__":

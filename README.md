@@ -357,13 +357,41 @@ python utils/register_model.py \
   --bucket fimc-data --prefix bridge-classification/models
 ```
 
+**Register evaluation results** (updates registry with metrics, changes stage to `evaluated`):
+
+```bash
+# With pre-computed inference (no GPU needed):
+python utils/evaluate_model.py \
+  --gold-dir ./data/ml-data/gold-data \
+  --test-dir ./data/ml-data/testing \
+  --inference-dir ./evaluation_results/v3/inference_output \
+  --output-dir ./evaluation_results/v3 \
+  --register --model-name bridge-base-all-data-v3 \
+  --bucket bucket-name \
+  --prefix prefix-name/models \
+  --profile aws-profile
+
+# With live inference (GPU):
+python utils/evaluate_model.py \
+  --gold-dir ./data/ml-data/gold-data \
+  --test-dir ./data/ml-data/testing \
+  --model ./experiments/.../checkpoints/best.ckpt \
+  --output-dir ./evaluation_results/new-model \
+  --register --model-name new-model \
+  --bucket bucket-name \
+  --prefix prefix-name/models \
+  --profile aws-profile
+```
+
 **Inspect the registry:**
 
 ```bash
 aws s3 cp s3://fimc-data/bridge-classification/models/registry.json - --profile test-se | python -m json.tool
 ```
 
-The registry stores model metadata (config, lineage, evaluation results) and follows a stage lifecycle: `experimental` → `evaluated` → `staging` → `production`. See `plan/mlops-model-registry-plan.md` for the full design.
+**MLOps workflow:** `train` → `register_model.py` → `evaluate_model.py --register` → `promote` (future)
+
+The registry stores model metadata (config, lineage, evaluation results) and follows a stage lifecycle: `experimental` → `evaluated` → `staging` → `production`.
 
 ## Testing
 

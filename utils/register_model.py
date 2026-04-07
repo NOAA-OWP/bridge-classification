@@ -9,7 +9,9 @@ Usage:
       --exp-dir ./experiments/bridge-base-all-data-v3/version_0 \
       --name bridge-base-all-data-v3 \
       --description "Silver-only training, 477K bridges, base_channels=16, 0.1m voxel" \
-      --bucket fimc-data --prefix bridge-classification/models
+      --bucket fimc-data \
+      --prefix bridge-classification/models \
+      --profile Data
 
     # Fine-tuned model with parent lineage:
     python utils/register_model.py \
