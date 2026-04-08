@@ -31,6 +31,7 @@ except ImportError:
     HAS_TQDM = False
     print("Warning: tqdm not available. Progress bars disabled.")
 
+
 def process_laz_file(filepath: Path, output_dir: Path, skip_existing: bool = False) -> Tuple[bool, Optional[str]]:
     """
     Process a single LAZ file with normalization and class remapping.

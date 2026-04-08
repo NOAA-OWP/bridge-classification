@@ -113,6 +113,8 @@ docker build --platform linux/amd64 -t bridge-classifier .
 
 **Run the Pipeline**:
 
+> **Logging training output to a file:** For long runs, you can capture stdout/stderr so the experiment dir is self-contained. Create the experiment directory first (so the log file path exists), then use `tee` to write to a log file while still showing output in the terminal:
+
 ```bash
 # Step 1: Download & Weak Supervision
 # --skip-existing skips already processed outputs and bridges that previously had no lidar points (count==0).
@@ -139,6 +141,7 @@ docker compose run --rm bridge-classifier python utils/calculate_weights.py --da
 # --batch-size 4 --accumulate-grad-batches 4 → effective 16, ~half the steps per epoch.
 # --batch-size 8 --accumulate-grad-batches 2 → effective 16, ~quarter of the steps (if it doesn’t OOM).
 
+mkdir -p experiments/bridge-base-all-data-v0
 docker compose run --rm \
 -e PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
 bridge-classifier python src/train.py \
@@ -154,14 +157,15 @@ bridge-classifier python src/train.py \
   --num-workers 4 \
   --early-stopping \
   --early-stopping-patience 6 \
-  --max-voxels 100000
+  --max-voxels 100000 \
+  2>&1 | tee experiments/bridge-base-all-data-v0/training_console.log
 
 
-# used for g5.4xlarge ec2
 # change rules
 # --batch-size 4 --accumulate-grad-batches 4 → effective 16, ~half the steps per epoch.
 # --batch-size 8 --accumulate-grad-batches 2 → effective 16, ~quarter of the steps (if it doesn’t OOM).
 
+mkdir -p experiments/bridge-base-all-data-v0
 docker compose run --rm \
 -e PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
 bridge-classifier python src/train.py \
@@ -169,7 +173,6 @@ bridge-classifier python src/train.py \
   --val-dir='/data/ml-data/validation' \
   --train-dir='/data/ml-data/training' \
   --epochs 25 \
-  --ckpt-path /app/experiments/bridge-base-all-data-v0/version_0/checkpoints/last.ckpt \
   --voxel-size 0.1 \
   --batch-size 16 \
   --accumulate-grad-batches 1 \
@@ -178,11 +181,13 @@ bridge-classifier python src/train.py \
   --num-workers 10 \
   --early-stopping \
   --early-stopping-patience 12 \
-  --max-voxels 100000
+  --max-voxels 100000 \
+  2>&1 | tee experiments/bridge-base-all-data-v0/training_console.log
 ```
 
+**Resume training** (continue from a saved checkpoint to more epochs, e.g. 10 → 25): use `--ckpt-path` and a new `--exp-name` so the resumed run writes to a separate experiment directory. Checkpoints are saved under `experiments/<exp_name>/version_0/checkpoints/` (e.g. `last.ckpt`).
 
-**Logging training output to a file:** For long runs, you can capture stdout/stderr so the experiment dir is self-contained. Create the experiment directory first (so the log file path exists), then use `tee` to write to a log file while still showing output in the terminal:
+(Adjust `--ckpt-path` if your experiments dir is mounted elsewhere; e.g. if `experiments` is at `/app/experiments`, use `/app/experiments/bridge-base-all-data-v0/version_0/checkpoints/last.ckpt`.)
 
 ```bash
 mkdir -p experiments/bridge-base-all-data-v1
@@ -206,35 +211,12 @@ docker compose run --rm \
   2>&1 | tee experiments/bridge-base-all-data-v1/training_console.log
 ```
 
-Use the same `--exp-name` as in your train command so the log lives next to `version_0/` (e.g. `experiments/bridge-base-all-data-v1/training_console.log`). The directory must exist before the run because `tee` does not create parent directories.
-
-**Resume training** (continue from a saved checkpoint to more epochs, e.g. 10 → 25): use `--ckpt-path` and a new `--exp-name` so the resumed run writes to a separate experiment directory. Checkpoints are saved under `experiments/<exp_name>/version_0/checkpoints/` (e.g. `last.ckpt`).
-
-```bash
-docker compose run --rm \
-  -e PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
-  bridge-classifier python src/train.py \
-  --train --augment \
-  --val-dir=/data/ml-data/validation \
-  --train-dir=/data/ml-data/training \
-  --epochs 25 \
-  --ckpt-path /app/experiments/bridge-base-all-data-v0/version_0/checkpoints/last.ckpt \
-  --exp-name bridge-base-all-data-v1 \
-  --voxel-size 0.1 \
-  --batch-size 4 \
-  --accumulate-grad-batches 4 \
-  --class-weights /data/ml-data/class_weights.json \
-  --num-workers 4 \
-  --early-stopping \
-  --early-stopping-patience 6 \
-  --max-voxels 100000
-```
-
-(Adjust `--ckpt-path` if your experiments dir is mounted elsewhere; e.g. if `experiments` is at `/app/experiments`, use `/app/experiments/bridge-base-all-data-v0/version_0/checkpoints/last.ckpt`.)
+> Use the same `--exp-name` as in your train command so the log lives next to `version_0/` (e.g. `experiments/bridge-base-all-data-v1/training_console.log`).
 
 **Fine-tune from a pretrained checkpoint** (load weights only, fresh optimizer and epoch counter — unlike `--ckpt-path` which resumes full training state). Use `--freeze-encoder` to train only the decoder and classifier while keeping the encoder frozen:
 
 ```bash
+mkdir -p experiments/ft-gold-optA-v0
 docker compose run --rm \
   -e PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
   bridge-classifier python src/train.py \
@@ -246,11 +228,14 @@ docker compose run --rm \
   --learning-rate 1e-4 \
   --epochs 30 \
   --batch-size 16 \
+  --accumulate-grad-batches 1 \
   --dice-loss \
   --early-stopping --early-stopping-patience 10 \
   --monitor val_deck_iou \
   --exp-name ft-gold-optA-v0 \
-  --max-voxels 100000
+  --voxel-size 0.1 \
+  --max-voxels 100000 \
+  2>&1 | tee experiments/ft-gold-optA-v0/training_console.log
 ```
 
 **Training options** (for `src/train.py`):

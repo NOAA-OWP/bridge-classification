@@ -22,6 +22,7 @@ services:
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
       - LD_LIBRARY_PATH=/opt/conda/lib:${LD_LIBRARY_PATH:-}
       - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONPATH=/app
     stdin_open: true
     tty: true
     command: ["/bin/bash"]

@@ -76,7 +76,7 @@ except ImportError as e:
     print("Warning: matplotlib not available. Visualization disabled. \nError: ", e)
 
 # Import model
-from model import SparseUNet
+from src.model import SparseUNet
 from src.constants import CLASS_COLORS, CLASS_NAMES
 from src.voxelization import voxelize
 
