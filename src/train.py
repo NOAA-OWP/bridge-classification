@@ -445,7 +445,7 @@ if HAS_LIGHTNING:
         def configure_optimizers(self):
             """Configure optimizer."""
             optimizer = optim.AdamW(
-                self.parameters(),
+                filter(lambda p: p.requires_grad, self.parameters()),
                 lr=self.learning_rate,
                 weight_decay=self.weight_decay
             )
@@ -982,6 +982,18 @@ def main():
         help='Path to checkpoint to resume training (e.g. .../checkpoints/last.ckpt). Use a new --exp-name for the resumed run so logs and checkpoints go to a separate experiment directory.',
     )
 
+    parser.add_argument(
+        '--finetune',
+        type=str,
+        default=None,
+        help='Checkpoint path for fine-tuning (loads weights only, fresh optimizer/epoch)',
+    )
+    parser.add_argument(
+        '--freeze-encoder',
+        action='store_true',
+        help='Freeze encoder weights; only decoder and classifier are trained',
+    )
+
     args = parser.parse_args()
     print(f"Using args: {args}")
 
@@ -1091,6 +1103,23 @@ def main():
             monitor_mode=monitor_mode,
             use_dice_loss=args.dice_loss,
         )
+
+        # Fine-tune: load weights only (no optimizer/scheduler/epoch state)
+        if args.finetune is not None:
+            if args.ckpt_path is not None:
+                raise SystemExit("Error: --finetune and --ckpt-path are mutually exclusive")
+            ft_path = Path(args.finetune).expanduser().resolve()
+            if not ft_path.exists():
+                raise SystemExit(f"Error: finetune checkpoint not found: {ft_path}")
+            checkpoint = torch.load(ft_path, map_location='cpu')
+            model.load_state_dict(checkpoint['state_dict'], strict=True)
+            print(f"Fine-tune: loaded weights from {ft_path}")
+
+        if args.freeze_encoder:
+            model.model.freeze_encoder()
+            total = sum(p.numel() for p in model.parameters())
+            trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+            print(f"Encoder frozen: {trainable:,}/{total:,} parameters trainable ({100*trainable/total:.1f}%)")
 
         # Logger: TensorBoard
         tensorboard_logger = TensorBoardLogger(

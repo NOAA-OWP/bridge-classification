@@ -179,7 +179,7 @@ def process_huc_folder(huc_dir: Path, output_base_dir: Path, skip_existing: bool
     output_huc_dir = output_base_dir / huc_id
 
     # Find all .laz files
-    laz_files = list(huc_dir.glob("*.laz"))
+    laz_files = list(huc_dir.glob("*.laz")) + list(huc_dir.glob("*.las"))
 
     if not laz_files:
         return {

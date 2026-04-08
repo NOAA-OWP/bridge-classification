@@ -165,7 +165,7 @@ No CLI arguments. Edit constants at top of file to configure.
 
 ### `src/preprocess_bridges.py`
 
-Normalizes LAZ files from `silver_training/` into `.npy` + `.json` pairs for model training.
+Normalizes LAZ/LAS files from `silver_training/` into `.npy` + `.json` pairs for model training. Supports both `.laz` and `.las` input files.
 
 **Imports from shared modules:**
 
@@ -186,7 +186,7 @@ Normalizes LAZ files from `silver_training/` into `.npy` + `.json` pairs for mod
 
 | Argument          | Default                                     | Description                                  |
 | ----------------- | ------------------------------------------- | -------------------------------------------- |
-| `--input-dir`     | `./data/ml-data/silver_training`            | Input directory with HUC-organized LAZ files |
+| `--input-dir`     | `./data/ml-data/silver_training`            | Input directory with HUC-organized LAZ/LAS files |
 | `--output-dir`    | `./data/ml-data/silver_training_normalized` | Output directory for `.npy` and `.json`      |
 | `--skip-existing` | False                                       | Skip if `.npy` + `.json` already exist       |
 | `--hucs`          | all                                         | Specific HUC IDs to process                  |
@@ -206,7 +206,7 @@ Sparse 3D U-Net architecture using SpConv. No CLI — imported by `train.py` and
 | Class                                                           | Description                                                                                                                 |
 | --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
 | `ResidualBlock(in_ch, out_ch, norm_fn, indice_key)`             | Two `SubMConv3d` layers + shortcut. Maintains sparsity pattern.                                                             |
-| `SparseUNet(input_channels=1, num_classes=4, base_channels=16)` | Full U-Net: 4-level encoder → bottleneck → 3-level decoder → classification head. Returns `(N_voxels, num_classes)` logits. |
+| `SparseUNet(input_channels=1, num_classes=4, base_channels=16)` | Full U-Net: 4-level encoder → bottleneck → 3-level decoder → classification head. Returns `(N_voxels, num_classes)` logits. `freeze_encoder()` freezes all encoder layers for fine-tuning. |
 
 
 ---
@@ -265,6 +265,8 @@ Training pipeline with voxelization, data loading, and PyTorch Lightning integra
 | `--monitor`                 | `val_deck_iou`            | Metric for checkpointing + early stopping                      |
 | `--accumulate-grad-batches` | 1                         | Gradient accumulation steps                                    |
 | `--ckpt-path`               | None                      | Checkpoint path to resume training from                        |
+| `--finetune`                | None                      | Checkpoint for fine-tuning (weights only, fresh optimizer/epoch). Mutually exclusive with `--ckpt-path` |
+| `--freeze-encoder`          | False                     | Freeze encoder; only decoder and classifier are trained        |
 | `--visualize`               | False                     | Visualize voxelization for a sample                            |
 | `--sample-idx`              | 0                         | Sample index to visualize                                      |
 
@@ -387,7 +389,7 @@ Splits bridge data into train/validation/test by HUC.
 
 | Argument             | Default                                     | Description                                              |
 | -------------------- | ------------------------------------------- | -------------------------------------------------------- |
-| `--laz-dir`          | `./data/ml-data/silver_training`            | Source LAZ directory (for test split)                    |
+| `--laz-dir`          | `./data/ml-data/silver_training`            | Source LAZ/LAS directory (for test split)                |
 | `--npy-dir`          | `./data/ml-data/silver_training_normalized` | Normalized NPY directory                                 |
 | `--output-dir`       | `./data/ml-data`                            | Output base directory                                    |
 | `--holdout-test-ids` | None                                        | File with fixed test IDs (`huc_id/bridge_stem` per line) |

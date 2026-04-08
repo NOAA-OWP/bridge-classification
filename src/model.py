@@ -150,6 +150,19 @@ class SparseUNet(nn.Module):
         # Map back to num_classes
         self.classifier = spconv.SubMConv3d(base_channels, num_classes, 3, padding=1, bias=True, indice_key='subm0')
 
+    def freeze_encoder(self):
+        """Freeze all encoder layers. Only decoder and classifier remain trainable."""
+        encoder_modules = [
+            self.conv_input, self.bn_input,
+            self.enc1,
+            self.down1, self.bn_down1, self.enc2,
+            self.down2, self.bn_down2, self.enc3,
+            self.down3, self.bn_down3, self.bottleneck,
+        ]
+        for module in encoder_modules:
+            for param in module.parameters():
+                param.requires_grad = False
+
     def forward(self, x):
         """
         Forward pass through the U-Net.

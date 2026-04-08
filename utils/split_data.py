@@ -57,7 +57,7 @@ def discover_bridges_by_huc(input_dir: Path) -> Dict[str, List[Path]]:
         if not child.is_dir():
             continue
         huc_id = child.name
-        laz_files = list(child.glob("*.laz"))
+        laz_files = list(child.glob("*.laz")) + list(child.glob("*.las"))
         if not laz_files:
             continue
         # Sort ensures deterministic order before shuffling
@@ -203,7 +203,7 @@ def _build_transfer_tasks(
         # Split Name | ID List | Source Dir | Extensions
         ("training", train_ids, npy_dir, [".npy", ".json"]),
         ("validation", val_ids, npy_dir, [".npy", ".json"]),
-        ("testing", test_ids, laz_dir, [".laz"]),            # For Humans
+        ("testing", test_ids, laz_dir, [".laz", ".las"]),     # For Humans
         ("testing", test_ids, npy_dir, [".npy", ".json"]),   # For Model
     ]
     tasks: List[Tuple[str, str, bool]] = []

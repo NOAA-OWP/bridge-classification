@@ -232,6 +232,27 @@ docker compose run --rm \
 
 (Adjust `--ckpt-path` if your experiments dir is mounted elsewhere; e.g. if `experiments` is at `/app/experiments`, use `/app/experiments/bridge-base-all-data-v0/version_0/checkpoints/last.ckpt`.)
 
+**Fine-tune from a pretrained checkpoint** (load weights only, fresh optimizer and epoch counter — unlike `--ckpt-path` which resumes full training state). Use `--freeze-encoder` to train only the decoder and classifier while keeping the encoder frozen:
+
+```bash
+docker compose run --rm \
+  -e PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
+  bridge-classifier python src/train.py \
+  --train --augment --augment-extra \
+  --finetune /app/experiments/bridge-base-all-data-v3/version_0/checkpoints/bridge-unet-epoch=35-val_deck_iou=83.3369.ckpt \
+  --freeze-encoder \
+  --train-dir=/data/ml-data/gold-split/training \
+  --val-dir=/data/ml-data/gold-split/validation \
+  --learning-rate 1e-4 \
+  --epochs 30 \
+  --batch-size 16 \
+  --dice-loss \
+  --early-stopping --early-stopping-patience 10 \
+  --monitor val_deck_iou \
+  --exp-name ft-gold-optA-v0 \
+  --max-voxels 100000
+```
+
 **Training options** (for `src/train.py`):
 
 - **`--monitor`**: Metric used for best-model checkpointing and early stopping (default: `val_deck_iou`). Use `val_deck_iou` to optimize for deck IoU, or `val_loss` for validation loss. When no validation data is used, `train_loss` is used instead.
@@ -240,6 +261,8 @@ docker compose run --rm \
 - **`--dice-loss`**: Use combined Dice + CrossEntropy loss (`0.5*CE + 0.5*Dice`) instead of CE only. Dice loss directly optimizes IoU (the target metric) and handles class imbalance naturally. Recommended for fine-tuning on small gold datasets.
 - **`--augment-extra`**: Enable extra augmentation on top of `--augment`: random XY-flip, random scaling (0.9–1.1x), intensity jitter, and random point dropout (5–10%). Requires `--augment`. Recommended when training on small datasets to increase effective sample diversity.
 - **`--ckpt-path`**: Path to a checkpoint to resume training (e.g. `.../checkpoints/last.ckpt`). Use a new `--exp-name` for the resumed run so logs and checkpoints go to a separate experiment directory; the original run is left unchanged.
+- **`--finetune`**: Path to a checkpoint for fine-tuning. Loads weights only (fresh optimizer and epoch counter). Mutually exclusive with `--ckpt-path`.
+- **`--freeze-encoder`**: Freeze all encoder layers so only the decoder and classifier are trained. Useful for fine-tuning on small datasets (e.g. gold annotations) where you want to preserve learned encoder features.
 
 Example: train with early stopping on deck IoU (default), or on validation loss for comparison:
 
