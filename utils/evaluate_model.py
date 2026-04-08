@@ -24,6 +24,7 @@ Usage:
 import argparse
 import json
 import os
+import shlex
 import signal
 import sys
 from pathlib import Path
@@ -656,6 +657,14 @@ def main():
     else:
         device = torch.device(args.device)
     print(f"Device: {device}")
+
+    # Save run config for reproducibility
+    output_dir = args.output_dir.resolve()
+    output_dir.mkdir(parents=True, exist_ok=True)
+    with open(output_dir / "eval_config.json", "w") as f:
+        json.dump({k: str(v) if isinstance(v, Path) else v for k, v in vars(args).items()}, f, indent=2)
+    with open(output_dir / "run_command.txt", "w") as f:
+        f.write(sys.executable + " " + " ".join(shlex.quote(a) for a in sys.argv) + "\n")
 
     # Discover gold bridges
     gold_dir = args.gold_dir.resolve()
