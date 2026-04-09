@@ -77,7 +77,7 @@ except ImportError as e:
 
 # Import model
 from src.model import SparseUNet
-from src.constants import CLASS_COLORS, CLASS_NAMES
+from src.constants import BRIDGE_DECK_MODEL_CLASS, CLASS_COLORS, CLASS_NAMES, NUM_CLASSES
 from src.voxelization import voxelize
 
 
@@ -255,7 +255,7 @@ if HAS_LIGHTNING:
     class DiceLoss(nn.Module):
         """Per-class Dice loss averaged across classes. Directly optimizes overlap (IoU proxy)."""
 
-        def __init__(self, num_classes=4, smooth=1.0):
+        def __init__(self, num_classes=NUM_CLASSES, smooth=1.0):
             super().__init__()
             self.num_classes = num_classes
             self.smooth = smooth
@@ -276,7 +276,7 @@ if HAS_LIGHTNING:
         def __init__(
             self,
             input_channels=1,
-            num_classes=4,
+            num_classes=NUM_CLASSES,
             base_channels=16,
             learning_rate=0.001,
             weight_decay=0.01,
@@ -382,8 +382,8 @@ if HAS_LIGHTNING:
                 preds = torch.argmax(output, dim=1)
 
                 # --- METRICS FOR BRIDGE DECK (CLASS 2) ---
-                deck_target = (labels == 2)
-                deck_pred = (preds == 2)
+                deck_target = (labels == BRIDGE_DECK_MODEL_CLASS)
+                deck_pred = (preds == BRIDGE_DECK_MODEL_CLASS)
 
                 # 1. Deck Recall (Accuracy on deck points)
                 # "Of the real deck points, how many did we find?"
@@ -993,6 +993,12 @@ def main():
         action='store_true',
         help='Freeze encoder weights; only decoder and classifier are trained',
     )
+    parser.add_argument(
+        '--save-top-k',
+        type=int,
+        default=5,
+        help='Number of best checkpoints to keep (default: 5)',
+    )
 
     args = parser.parse_args()
     print(f"Using args: {args}")
@@ -1094,7 +1100,7 @@ def main():
         # Create model
         model = BridgeLightningModule(
             input_channels=1,
-            num_classes=4,
+            num_classes=NUM_CLASSES,
             base_channels=args.base_channels,
             learning_rate=args.learning_rate,
             weight_decay=args.weight_decay,
@@ -1165,7 +1171,7 @@ def main():
             checkpoint_callback = ModelCheckpoint(
                 filename=f'bridge-unet-{{epoch:02d}}-{{{effective_monitor}:.4f}}',
                 monitor=effective_monitor,
-                save_top_k=5,
+                save_top_k=args.save_top_k,
                 mode=monitor_mode,
                 save_last=True
             )
@@ -1173,7 +1179,7 @@ def main():
             checkpoint_callback = ModelCheckpoint(
                 filename='bridge-unet-{epoch:02d}-{train_loss:.4f}',
                 monitor='train_loss',
-                save_top_k=5,
+                save_top_k=args.save_top_k,
                 mode='min',
                 save_last=True
             )
