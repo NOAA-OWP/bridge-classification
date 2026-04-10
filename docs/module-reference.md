@@ -534,6 +534,24 @@ Registers a trained model to the S3-based model registry. Uploads the best check
 
 ---
 
+### `utils/promote_model.py`
+
+Promotes a model to production in the S3 model registry. Demotes the current production model (if any) back to "evaluated", promotes the specified model, and prints the `s3_checkpoint_uri` for updating `terraform.tfvars`.
+
+**CLI arguments:**
+
+
+| Argument    | Default                        | Description                                            |
+| ----------- | ------------------------------ | ------------------------------------------------------ |
+| `--name`    | *(required)*                   | Model name to promote (must exist in registry)         |
+| `--bucket`  | `fimc-data`                    | S3 bucket                                              |
+| `--prefix`  | `bridge-classification/models` | S3 prefix for model registry                           |
+| `--profile` | None                           | AWS profile name                                       |
+| `--dry-run` | False                          | Show what would change without modifying S3             |
+
+
+---
+
 ### `utils/evaluate_model.py`
 
 Evaluates a trained bridge classification model against human-annotated (gold) data. Reports metrics for both model predictions and silver (auto-labeled) baseline. Supports two modes: running inference from a checkpoint (`--model`) or evaluating pre-computed predictions (`--inference-dir`). Optionally updates the S3 model registry with evaluation metrics (`--register`).
