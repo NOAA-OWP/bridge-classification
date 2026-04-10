@@ -552,6 +552,26 @@ Promotes a model to production in the S3 model registry. Demotes the current pro
 
 ---
 
+### `utils/compare_experiments.py`
+
+Prints a sorted comparison table of model evaluation metrics from `registry.json`. Reads locally by default; supports `--from-s3` for remote registry.
+
+**CLI arguments:**
+
+
+| Argument     | Default                        | Description                                            |
+| ------------ | ------------------------------ | ------------------------------------------------------ |
+| `--registry` | `data/models/registry.json`    | Local registry path                                    |
+| `--eval-set` | all                            | Evaluation set to compare; if unset, shows all         |
+| `--sort`     | `bridge_deck_iou`              | Metric to sort by (descending)                         |
+| `--from-s3`  | False                          | Load registry from S3 instead of local file            |
+| `--bucket`   | `fimc-data`                    | S3 bucket (only with `--from-s3`)                      |
+| `--prefix`   | `bridge-classification/models` | S3 prefix (only with `--from-s3`)                      |
+| `--profile`  | None                           | AWS profile name                                       |
+
+
+---
+
 ### `utils/evaluate_model.py`
 
 Evaluates a trained bridge classification model against human-annotated (gold) data. Reports metrics for both model predictions and silver (auto-labeled) baseline. Supports two modes: running inference from a checkpoint (`--model`) or evaluating pre-computed predictions (`--inference-dir`). Optionally updates the S3 model registry with evaluation metrics (`--register`).
