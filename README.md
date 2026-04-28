@@ -401,6 +401,20 @@ aws s3 cp s3://fimc-data/bridge-classification/models/registry.json - --profile 
 
 The registry stores model metadata (config, lineage, evaluation results) and follows a stage lifecycle: `experimental` → `evaluated` → `staging` → `production`.
 
+## Gold Annotation
+
+Gold data consists of manually annotated point clouds using the same 4-class scheme (Background, Ground/Water, Bridge Deck, Obstacles). Silver labels from the weak supervision pipeline provide the starting point; annotators correct and refine them.
+
+Gold data lives in `gold-data/{huc_id}/` on S3, preprocessed into `gold-data-normalized/`, and split via `gold-split/` (training/validation/testing).
+
+To find new candidates for annotation:
+
+```bash
+python utils/find_new_source_candidates.py --proven-linear false --sample-size 0
+```
+
+See `docs/data-pipeline.md` (Extended Workflows) for the full discovery-to-annotation pipeline.
+
 ## Testing
 
 Install test dependencies and run the suite:
@@ -462,18 +476,27 @@ The directory `data/ml-data/` is the default base for pipeline outputs: download
 
 ```text
 data/ml-data/
-├── source/                    # Step 1: raw LAZ per HUC
-├── silver_training/           # Step 1: weak-supervised LAZ per HUC
-├── silver_training_normalized/ # Step 2: .npy and .json per HUC
-├── training/                  # Step 3: train split (.npy, .json)
-├── validation/                # Step 3: validation split
-├── testing/                   # Step 3: test split (+ .laz if present)
-├── split_manifest.json        # Step 3: split manifest
-├── split_train_ids.txt        # Step 3: train IDs
-├── split_val_ids.txt          # Step 3: validation IDs
-├── split_test_ids.txt         # Step 3: test IDs
-├── class_weights.json         # Step 3a (optional): from calculate_weights
-└── holdout_test.txt           # Optional: fixed test IDs for split_data
+├── source/                        # Step 1: raw LAZ per HUC
+├── silver_training/               # Step 1: weak-supervised LAZ per HUC
+├── silver_training_normalized/    # Step 2: .npy and .json per HUC
+├── training/                      # Step 3: train split (.npy, .json)
+├── validation/                    # Step 3: validation split
+├── testing/                       # Step 3: test split (+ .laz if present)
+├── gold-data/                     # Human-annotated gold bridges (by HUC)
+├── gold-data-normalized/          # Preprocessed gold (.npy + .json)
+├── gold-split/                    # Gold train/val/test split
+│   ├── training/
+│   ├── validation/
+│   └── testing/
+├── new-source-candidates/         # Output from find_new_source_candidates.py
+├── not_lidar_source/              # Bridges with no lidar (raw download only)
+├── split_manifest.json            # Step 3: split manifest
+├── split_train_ids.txt            # Step 3: train IDs
+├── split_val_ids.txt              # Step 3: validation IDs
+├── split_test_ids.txt             # Step 3: test IDs
+├── split_gold_v2_linear_ids.txt   # Gold-v2: 50 bridges sent for annotation
+├── class_weights.json             # Step 3a (optional): from calculate_weights
+└── holdout_test.txt               # Optional: fixed test IDs for split_data
 ```
 
 ### Notebooks

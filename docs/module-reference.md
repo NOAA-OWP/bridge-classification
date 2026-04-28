@@ -102,6 +102,36 @@ No CLI. Imported by `train.py` and `inference.py`.
 
 ---
 
+### `src/lidar_utils.py`
+
+Shared utilities for lidar source discovery, bridge filename operations, and stratified sampling. Depends on geopandas.
+
+**Constants:**
+
+
+| Constant         | Value   | Description                      |
+| ---------------- | ------- | -------------------------------- |
+| `EPSG`           | `3857`  | Default projection (Web Mercator)|
+| `DEFAULT_BUFFER` | `10.0`  | Default bridge buffer in meters  |
+
+
+**Functions:**
+
+
+| Function                                                                          | Description                                                                                   |
+| --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `safe_source_name(source_name)`                                                   | Sanitize a lidar source name for use in filenames                                             |
+| `bridge_stem(osm_id, source_name)`                                                | Build canonical bridge filename stem from OSM ID and source name                              |
+| `parse_bridge_stem(stem)`                                                         | Parse a bridge stem back into `(osm_id, source_name)` tuple                                   |
+| `load_lidar_index(path, epsg)`                                                    | Load lidar resources GeoJSON and reproject to target EPSG                                     |
+| `find_intersecting_sources(lidar_gdf, bridge_geometry, buffer_meters)`            | Spatial query: find lidar sources intersecting buffered bridge geometry                       |
+| `stratified_sample(entries, sample_size, max_per_group, seed, group_key, id_key)` | Stratified random sample with per-group cap for diversity                                     |
+
+
+No CLI. Imported by `download_and_weak_supervise_hucs.py`, `find_new_source_candidates.py`, `download_bridge_lidar.py`.
+
+---
+
 ### `src/download_and_weak_supervise_hucs.py`
 
 Full HUC-based pipeline for downloading USGS LiDAR and generating weakly-supervised silver training data. This is the primary data acquisition script.
@@ -643,6 +673,49 @@ python utils/evaluate_model.py \
     --prefix prefix-name/models \
     --profile aws-profile
 ```
+
+---
+
+### `utils/find_new_source_candidates.py`
+
+Finds bridge+lidar source combinations not in existing train/val/test splits for gold annotation campaigns. Scans per-HUC GPKGs, queries lidar sources spatially, diffs against split files, outputs stratified sample.
+
+**CLI arguments:**
+
+
+| Argument             | Default                                       | Description                                                    |
+| -------------------- | --------------------------------------------- | -------------------------------------------------------------- |
+| `--proven-linear`    | *(required)*                                  | `true` = same bridge new source; `false` = unseen bridges      |
+| `--sample-size`      | 50                                            | Number of candidates to sample (0 = all)                       |
+| `--max-per-huc`      | 2                                             | Maximum candidates per HUC in sample                           |
+| `--lidar-resources`  | `./data/usgs_entwine/lidar_resources.geojson` | USGS EPT source index                                          |
+| `--hucs-dir`         | `./data/osm/hucs`                             | Directory containing per-HUC GPKG files                        |
+| `--split-dir`        | `./data/ml-data`                              | Directory containing split ID files                            |
+| `--output-dir`       | `./data/ml-data/new-source-candidates`        | Output directory for CSV + helper files                        |
+
+
+**Outputs:** CSV files with candidate bridge+source pairs, plus `sample_hucs.txt` and `sample_osm_ids.txt` for pipeline input.
+
+---
+
+### `utils/download_bridge_lidar.py`
+
+Downloads raw lidar point clouds for OSM bridges without applying weak supervision. Lightweight alternative to `download_and_weak_supervise_hucs.py` for bridges that only need source LAZ (e.g., inference on not-lidar bridges).
+
+**CLI arguments:**
+
+
+| Argument             | Default                                       | Description                                          |
+| -------------------- | --------------------------------------------- | ---------------------------------------------------- |
+| `--hucs-dir`         | `./data/osm/hucs`                             | Directory containing per-HUC GPKG files              |
+| `--lidar-resources`  | `./data/usgs_entwine/lidar_resources.geojson` | USGS EPT source index                                |
+| `--output-dir`       | `./data/ml-data/not_lidar_source`             | Output directory for raw LAZ downloads               |
+| `--gpkg-pattern`     | `osm_bridges_lidar_subset__*.gpkg`            | Glob pattern for GPKG files                          |
+| `--hucs`             | all                                           | Space-separated HUC IDs to process                   |
+| `--osm-ids`          | all                                           | Space-separated OSM IDs to process                   |
+| `--skip-existing`    | False                                         | Skip bridges already downloaded                      |
+| `--workers`          | CPU count                                     | Parallel worker processes                            |
+
 
 ---
 

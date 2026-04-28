@@ -233,3 +233,19 @@ Raw LAZ (unprocessed)
 | Step 4 – model output | logits | (ΣM, 4) | float32 | Per-voxel class scores |
 | Step 5 – point labels | `point_labels_las` | (N,) | uint8 | ASPRS codes per original point |
 | Step 5 output | Predicted LAZ | Structured array, N rows | mixed | ASPRS Classification field updated |
+
+---
+
+## Extended Workflows
+
+### Gold Annotation Candidate Discovery
+
+Finding new bridges to send for human annotation:
+
+1. **Discover candidates**: Run `python utils/find_new_source_candidates.py --proven-linear false --sample-size 0` to find all bridge+source combinations not already in train/val/test splits.
+2. **Run weak supervision**: Process candidates through `src/download_and_weak_supervise_hucs.py` using the output HUC/OSM ID lists. The pipeline automatically rejects complex/curved bridges via the RANSAC linearity check.
+3. **Extract successes**: Use `archive/scripts/extract_successful_bridges.py` to parse pipeline logs and identify bridges that passed QC.
+4. **Select final set**: Choose 1 bridge per HUC (for geographic diversity) and push silver `.laz` files to S3 `testing/` for annotators.
+5. **Merge annotations**: After annotation returns, merge corrected files into `gold-data/`, re-normalize with `preprocess_bridges.py`, and re-split with `split_data.py`.
+
+Use `--proven-linear true` as a fallback when you need guaranteed-linear bridges (same bridge geometry, different lidar source).

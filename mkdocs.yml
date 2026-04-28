@@ -21,6 +21,7 @@ nav:
   - AWS Batch Inference: aws-batch-inference.md
   - Module Reference: module-reference.md
   - Design Decisions: decisions.md
+  - Environments: envs.md
 
 markdown_extensions:
   - pymdownx.superfences:
