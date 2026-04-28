@@ -18,38 +18,43 @@ candidate has a `proven_linear` column:
     different point cloud.
 
   - proven_linear=False: The bridge's osm_id is NOT in any split file.
-    Linearity is unknown — most turn out to be complex/curved (~99%
-    rejection rate observed in practice).
+    Linearity is unknown — per-bridge pass rate is low (~1%), but the
+    candidate pool is large (113K+), so running all candidates through
+    the pipeline yields sufficient linear bridges (76 from 48 HUC8s
+    observed in first full run, 2026-04-28).
 
 Use --proven-linear to filter before sampling.
 
-Recommended approach (proven linear, new lidar source):
-    1. Run with --proven-linear true --sample-size 50
-    2. Download lidar via download_and_weak_supervise_hucs.py
-    3. Send source .laz files directly to annotators (no filtering needed)
-
-Alternative (truly unseen bridges, high rejection rate):
-    1. Run with --proven-linear false --sample-size 250 (over-sample)
-    2. Process through download_and_weak_supervise_hucs.py
+Primary approach (truly unseen bridges):
+    1. Run with --proven-linear false --sample-size 0 (all candidates)
+    2. Process ALL candidates through download_and_weak_supervise_hucs.py
        (rejects complex/curved bridges automatically)
-    3. From bridges that pass (~1%), select final bridges for annotation
+    3. Extract successes from logs (archive/scripts/extract_successful_bridges.py)
+    4. Select final ~50 bridges (1 per HUC first for diversity)
+    Note: small samples (e.g. --sample-size 250) yield very few passes.
+    The full pool is needed to get enough linear bridges.
+
+Fallback (if not enough pass the pipeline):
+    1. Run with --proven-linear true --sample-size 50
+       (guaranteed linear — same bridge, new lidar source)
+    2. Send directly to annotators (no pipeline filtering needed)
 
 Usage:
-    # Recommended: proven linear bridges with new lidar source
+    # Primary: all truly unseen candidates for pipeline filtering
+    python utils/find_new_source_candidates.py \
+        --lidar-resources data/usgs_entwine/lidar_resources_apr_27_2026.geojson \
+        --hucs-dir data/osm/hucs \
+        --split-dir data/ml-data \
+        --output-dir data/ml-data/new-source-candidates \
+        --proven-linear false --sample-size 0
+
+    # Fallback: proven linear bridges with new lidar source
     python utils/find_new_source_candidates.py \
         --lidar-resources data/usgs_entwine/lidar_resources_apr_27_2026.geojson \
         --hucs-dir data/osm/hucs \
         --split-dir data/ml-data \
         --output-dir data/ml-data/new-source-candidates \
         --proven-linear true --sample-size 50 --max-per-huc 3
-
-    # Alternative: truly unseen bridges (expect ~99% rejection by pipeline)
-    python utils/find_new_source_candidates.py \
-        --lidar-resources data/usgs_entwine/lidar_resources_apr_27_2026.geojson \
-        --hucs-dir data/osm/hucs \
-        --split-dir data/ml-data \
-        --output-dir data/ml-data/new-source-candidates \
-        --proven-linear false --sample-size 250 --max-per-huc 3
 
     # Process candidates through the pipeline (rejects complex bridges)
     python src/download_and_weak_supervise_hucs.py \

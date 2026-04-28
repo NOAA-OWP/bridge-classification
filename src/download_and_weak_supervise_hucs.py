@@ -1153,7 +1153,8 @@ class BridgeProcessor:
         # Process tasks in parallel; log each result as soon as it completes
         results = []
         with multiprocessing.Pool(processes=self.num_workers, maxtasksperchild=50) as pool:
-            iterator = pool.imap(process_bridge_source, tasks)
+            # iterator = pool.imap(process_bridge_source, tasks)
+            iterator = pool.imap_unordered(process_bridge_source, tasks)
             if show_progress and HAS_TQDM:
                 iterator = tqdm(iterator, total=len(tasks), desc="Processing bridges")
             for result in iterator:
