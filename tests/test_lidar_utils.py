@@ -2,6 +2,8 @@
 
 import pytest
 
+gpd = pytest.importorskip("geopandas", reason="geopandas not installed")
+
 from src.lidar_utils import (
     EPSG,
     DEFAULT_BUFFER,
