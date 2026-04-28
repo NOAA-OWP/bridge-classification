@@ -47,6 +47,10 @@ from typing import Any, Dict, List, Optional
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from src.logging_utils import setup_logging
+from src.lidar_utils import (
+    load_lidar_index, find_intersecting_sources, safe_source_name,
+    EPSG, DEFAULT_BUFFER,
+)
 
 import geopandas as gpd
 import pdal
@@ -63,68 +67,18 @@ warnings.filterwarnings('ignore')
 logger: Optional[logging.Logger] = None
 
 
-
-
 # --- PDAL defaults (same as BridgeProcessingConfig in download_and_weak_supervise_hucs.py) ---
 EPT_REQUESTS = 3
 EPT_RESOLUTION = 0.1
 WRITER_SRS = "EPSG:3857"
-DEFAULT_BUFFER = 10.0
-EPSG = 3857
-
-
-# ---------------------------------------------------------------------------
-# Lidar source finder (subset of LidarSourceFinder from the weak-supervision
-# pipeline, kept self-contained so this script has no cross-imports).
-# ---------------------------------------------------------------------------
-
-def load_lidar_index(path: str) -> gpd.GeoDataFrame:
-    """Load lidar_resources.geojson and reproject to EPSG:3857."""
-    gdf = gpd.read_file(path)
-    gdf = gdf.to_crs(epsg=EPSG)
-    return gdf
-
-
-def find_intersecting_sources(
-    lidar_gdf: gpd.GeoDataFrame,
-    bridge_geometry: Any,
-    buffer_meters: float = DEFAULT_BUFFER,
-) -> List[Dict[str, str]]:
-    """Return list of {'url': ..., 'name': ...} for lidar sources intersecting the buffered bridge."""
-    if lidar_gdf.empty:
-        return []
-    buffered = bridge_geometry.buffer(buffer_meters)
-    possible = list(lidar_gdf.sindex.intersection(buffered.bounds))
-    candidates = lidar_gdf.iloc[possible]
-    intersecting = candidates[candidates.intersects(buffered)]
-    results = []
-    for idx, row in intersecting.iterrows():
-        url = row.get('url', '') if 'url' in row else ''
-        name = row.get('name', '') if 'name' in row else ''
-        if not url and 'properties' in row and isinstance(row['properties'], dict):
-            url = row['properties'].get('url', '')
-            name = row['properties'].get('name', '')
-        if url:
-            results.append({'url': url, 'name': name or f"source_{idx}"})
-    return results
-
-
-# ---------------------------------------------------------------------------
-# Download helpers
-# ---------------------------------------------------------------------------
-
-def _safe_source_name(source_name: str) -> str:
-    """Sanitize source_name for filenames (mirrors DataManager convention)."""
-    safe = source_name.replace('/', '_').replace('\\', '_').replace(':', '_').replace(' ', '_')
-    return ''.join(c if c.isalnum() or c in '._-' else '_' for c in safe)
 
 
 def _output_path(output_dir: Path, huc_id: str, osmid: str, source_name: str) -> Path:
-    return output_dir / huc_id / f"bridge_{osmid}_{_safe_source_name(source_name)}.laz"
+    return output_dir / huc_id / f"bridge_{osmid}_{safe_source_name(source_name)}.laz"
 
 
 def _no_points_path(output_dir: Path, huc_id: str, osmid: str, source_name: str) -> Path:
-    return output_dir / huc_id / f"bridge_{osmid}_{_safe_source_name(source_name)}.no_points"
+    return output_dir / huc_id / f"bridge_{osmid}_{safe_source_name(source_name)}.no_points"
 
 
 def download_one_bridge(args: tuple) -> Dict[str, Any]:

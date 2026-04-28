@@ -20,11 +20,15 @@ Example usage:
 
 import argparse
 import csv
+import os
 import re
 import random
 import sys
 from collections import defaultdict
 from pathlib import Path, PurePosixPath
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from src.lidar_utils import stratified_sample, parse_bridge_stem
 
 
 CURVED_PATTERN = re.compile(
@@ -88,53 +92,13 @@ def load_exclude_ids(filepath):
             line = line.strip()
             if not line:
                 continue
-            # Format: HUC/bridge_OSMID_SOURCE
             parts = line.split("/", 1)
             if len(parts) == 2:
                 huc = parts[0]
-                # Extract OSM ID: bridge_{osm_id}_{source}
-                stem = parts[1]
-                if stem.startswith("bridge_"):
-                    rest = stem[len("bridge_"):]
-                    # OSM ID is the first numeric segment
-                    osm_id = rest.split("_", 1)[0]
-                    exclude.add((huc, osm_id))
+                parsed = parse_bridge_stem(parts[1])
+                if parsed:
+                    exclude.add((huc, parsed[0]))
     return exclude
-
-
-def stratified_sample(entries, sample_size, max_per_huc, seed):
-    """Randomly sample bridges, max N per HUC for geographic diversity."""
-    rng = random.Random(seed)
-
-    by_huc = defaultdict(list)
-    for entry in entries:
-        by_huc[entry["huc_id"]].append(entry)
-
-    # Shuffle within each HUC
-    for huc in by_huc:
-        rng.shuffle(by_huc[huc])
-
-    # Round-robin across HUCs to fill sample
-    sample = []
-    huc_counts = defaultdict(int)
-    huc_order = sorted(by_huc.keys())
-    rng.shuffle(huc_order)
-
-    # Multiple passes until we hit sample_size or exhaust all HUCs
-    for pass_num in range(max_per_huc):
-        for huc in huc_order:
-            if len(sample) >= sample_size:
-                break
-            bridges = by_huc[huc]
-            if huc_counts[huc] < len(bridges) and huc_counts[huc] < max_per_huc:
-                sample.append(bridges[huc_counts[huc]])
-                huc_counts[huc] += 1
-        if len(sample) >= sample_size:
-            break
-
-    # Sort by HUC for readability
-    sample.sort(key=lambda x: (x["huc_id"], x["osm_id"]))
-    return sample
 
 
 def list_s3_source_keys(s3_uri, profile=None):
@@ -147,13 +111,10 @@ def list_s3_source_keys(s3_uri, profile=None):
     Returns:
         set of (huc_id, osm_id, lidar_source) tuples found in S3
     """
-    # Import here to avoid requiring boto3 when not using S3 validation
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     from src.s3 import create_s3_client, parse_s3_uri
 
     s3_client = create_s3_client(profile=profile)
     bucket, prefix = parse_s3_uri(s3_uri)
-    # Ensure prefix ends with /
     if prefix and not prefix.endswith("/"):
         prefix += "/"
 
@@ -168,16 +129,12 @@ def list_s3_source_keys(s3_uri, profile=None):
             if not key.endswith(".laz"):
                 continue
             total_files += 1
-            # Extract huc_id/bridge_{osm_id}_{source}.laz from the key
-            rel_path = key[len(prefix):]  # e.g., 02050206/bridge_43249811_SOURCE.laz
+            rel_path = key[len(prefix):]
             p = PurePosixPath(rel_path)
             huc_id = str(p.parent)
-            stem = p.stem  # bridge_43249811_SOURCE
-            if stem.startswith("bridge_"):
-                rest = stem[len("bridge_"):]
-                osm_id, _, lidar_source = rest.partition("_")
-                if osm_id and lidar_source:
-                    source_keys.add((huc_id, osm_id, lidar_source))
+            parsed = parse_bridge_stem(p.stem)
+            if parsed:
+                source_keys.add((huc_id, parsed[0], parsed[1]))
 
     print(f"  Found {total_files} .laz files, parsed {len(source_keys)} unique bridge keys")
     return source_keys

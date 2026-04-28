@@ -76,6 +76,11 @@ from matplotlib.path import Path as MatplotlibPath
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from src.logging_utils import setup_logging
+from src.lidar_utils import (
+    load_lidar_index as _load_lidar_index,
+    find_intersecting_sources as _find_sources,
+    safe_source_name as _safe_name,
+)
 
 try:
     from tqdm import tqdm
@@ -184,68 +189,13 @@ class LidarSourceFinder:
     def __init__(self, lidar_resources_path: str) -> None:
         """Initialize the finder by loading lidar resources and building spatial index."""
         print(f"[Worker {os.getpid()}] Loading lidar resources from {lidar_resources_path}...")
-        self.lidar_gdf = gpd.read_file(str(lidar_resources_path))
-        self.lidar_gdf = self.lidar_gdf.to_crs(epsg=3857)
-
-        # Build spatial index for fast queries
-        if not self.lidar_gdf.empty:
-            self.sindex = self.lidar_gdf.sindex
-        else:
-            self.sindex = None
+        self.lidar_gdf = _load_lidar_index(str(lidar_resources_path))
+        self.sindex = self.lidar_gdf.sindex if not self.lidar_gdf.empty else None
         print(f"[Worker {os.getpid()}] Loaded {len(self.lidar_gdf)} lidar sources")
 
-    def find_intersecting_sources(self, bridge_geometry: Any, buffer_meters: float = 10) -> List[Dict[str, str]]:  # Dictionary with 'url' and 'name' keys
-        """
-        Find all lidar sources that intersect with the buffered bridge geometry.
-
-        Args:
-            bridge_geometry: Shapely geometry of the bridge
-            buffer_meters: Buffer size in meters
-
-        Returns:
-            List of dictionaries with 'url' and 'name' keys for intersecting sources
-        """
-        if self.lidar_gdf.empty:
-            return []
-
-        # Buffer the bridge geometry
-        # Bridge geometry should already be in EPSG:3857 (converted in load_bridges)
-        buffered = bridge_geometry.buffer(buffer_meters)
-
-        # Ensure buffered geometry is in same CRS as lidar_gdf (3857)
-        # If bridge_geometry came from a GeoDataFrame, it should already be in 3857
-        # But buffered is a shapely geometry without CRS info, so we assume it's correct
-
-        # Use spatial index for bounding box query first
-        if self.sindex is not None:
-            possible_matches = list(self.sindex.intersection(buffered.bounds))
-            candidates = self.lidar_gdf.iloc[possible_matches]
-        else:
-            candidates = self.lidar_gdf
-
-        # Perform detailed intersection check
-        intersecting = candidates[candidates.intersects(buffered)]
-
-        # Extract url and name
-        # GeoPandas flattens GeoJSON properties into columns
-        results = []
-        for idx, row in intersecting.iterrows():
-            # Try direct column access first (geopandas flattens properties)
-            url = row.get('url', '') if 'url' in row else ''
-            name = row.get('name', '') if 'name' in row else ''
-
-            # If not found, try properties dict (fallback)
-            if not url and 'properties' in row and isinstance(row['properties'], dict):
-                url = row['properties'].get('url', '')
-                name = row['properties'].get('name', '')
-
-            if url:  # Only add if URL exists
-                results.append({
-                    'url': url,
-                    'name': name or f"source_{idx}"  # Use index as fallback name
-                })
-
-        return results
+    def find_intersecting_sources(self, bridge_geometry: Any, buffer_meters: float = 10) -> List[Dict[str, str]]:
+        """Find all lidar sources that intersect with the buffered bridge geometry."""
+        return _find_sources(self.lidar_gdf, bridge_geometry, buffer_meters)
 
 
 class WeakSupervisionPipeline:
@@ -693,13 +643,9 @@ class DataManager:
         Returns:
             Tuple of (source_path, silver_path) as strings for pdal compatibility
         """
-        # Sanitize source_name for filename (remove/replace invalid characters)
-        safe_source_name = source_name.replace('/', '_').replace('\\', '_').replace(':', '_').replace(' ', '_')
-        # Remove any other problematic characters
-        safe_source_name = ''.join(c if c.isalnum() or c in '._-' else '_' for c in safe_source_name)
-
-        source_filename = f"bridge_{osmid}_{safe_source_name}.laz"
-        silver_filename = f"bridge_{osmid}_{safe_source_name}.laz"
+        safe_name = _safe_name(source_name)
+        source_filename = f"bridge_{osmid}_{safe_name}.laz"
+        silver_filename = f"bridge_{osmid}_{safe_name}.laz"
 
         source_path = self.source_dir / huc_id / source_filename
         silver_path = self.silver_dir / huc_id / silver_filename
@@ -717,18 +663,12 @@ class DataManager:
     def file_exists(self, huc_id: str, osmid: str, source_name: str) -> bool:
         """Check if both source and silver files already exist."""
         source_path, silver_path = self.get_paths(huc_id, osmid, source_name)
-        # since we are saving source file both for success and failure, we only need to check the source file
         return Path(source_path).exists()
-
-    def _safe_source_name(self, source_name: str) -> str:
-        """Sanitize source_name for use in filenames (same logic as get_paths)."""
-        safe = source_name.replace('/', '_').replace('\\', '_').replace(':', '_').replace(' ', '_')
-        return ''.join(c if c.isalnum() or c in '._-' else '_' for c in safe)
 
     def no_points_sentinel_path(self, huc_id: str, osmid: str, source_name: str) -> Path:
         """Path to sentinel file indicating no lidar points were found for this bridge/source."""
-        safe_source_name = self._safe_source_name(source_name)
-        filename = f"bridge_{osmid}_{safe_source_name}.no_points"
+        safe_name = _safe_name(source_name)
+        filename = f"bridge_{osmid}_{safe_name}.no_points"
         return self.source_dir / huc_id / filename
 
     def no_points_sentinel_exists(self, huc_id: str, osmid: str, source_name: str) -> bool:

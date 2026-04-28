@@ -65,6 +65,8 @@ Usage:
 
 import argparse
 import csv
+import os
+import sys
 import random
 import warnings
 from collections import defaultdict
@@ -73,6 +75,12 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 import geopandas as gpd
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from src.lidar_utils import (
+    load_lidar_index, find_intersecting_sources, safe_source_name,
+    bridge_stem as make_bridge_stem, stratified_sample, EPSG, DEFAULT_BUFFER,
+)
+
 try:
     from tqdm import tqdm
     HAS_TQDM = True
@@ -80,50 +88,6 @@ except ImportError:
     HAS_TQDM = False
 
 warnings.filterwarnings('ignore')
-
-EPSG = 3857
-DEFAULT_BUFFER = 10.0
-
-
-# ---------------------------------------------------------------------------
-# Lidar source finder (self-contained copy from download_bridge_lidar.py)
-# ---------------------------------------------------------------------------
-
-def load_lidar_index(path: str) -> gpd.GeoDataFrame:
-    """Load lidar_resources.geojson and reproject to EPSG:3857."""
-    gdf = gpd.read_file(path)
-    gdf = gdf.to_crs(epsg=EPSG)
-    return gdf
-
-
-def find_intersecting_sources(
-    lidar_gdf: gpd.GeoDataFrame,
-    bridge_geometry: Any,
-    buffer_meters: float = DEFAULT_BUFFER,
-) -> List[Dict[str, str]]:
-    """Return list of {'url': ..., 'name': ...} for lidar sources intersecting the buffered bridge."""
-    if lidar_gdf.empty:
-        return []
-    buffered = bridge_geometry.buffer(buffer_meters)
-    possible = list(lidar_gdf.sindex.intersection(buffered.bounds))
-    candidates = lidar_gdf.iloc[possible]
-    intersecting = candidates[candidates.intersects(buffered)]
-    results = []
-    for idx, row in intersecting.iterrows():
-        url = row.get('url', '') if 'url' in row else ''
-        name = row.get('name', '') if 'name' in row else ''
-        if not url and 'properties' in row and isinstance(row['properties'], dict):
-            url = row['properties'].get('url', '')
-            name = row['properties'].get('name', '')
-        if url:
-            results.append({'url': url, 'name': name or f"source_{idx}"})
-    return results
-
-
-def _safe_source_name(source_name: str) -> str:
-    """Sanitize source_name for filenames (mirrors DataManager convention)."""
-    safe = source_name.replace('/', '_').replace('\\', '_').replace(':', '_').replace(' ', '_')
-    return ''.join(c if c.isalnum() or c in '._-' else '_' for c in safe)
 
 
 # ---------------------------------------------------------------------------
@@ -224,12 +188,11 @@ def find_candidates(
 
             for src in sources:
                 total_sources_checked += 1
-                safe_name = _safe_source_name(src['name'])
-                bridge_stem = f"bridge_{osmid}_{safe_name}"
+                stem = make_bridge_stem(osmid, src['name'])
 
                 # Skip exact bridge+source combos already in splits;
                 # a different source for the same osm_id still passes (proven_linear=True)
-                if bridge_stem in used_stems:
+                if stem in used_stems:
                     continue
 
                 bridge_name = row.get('name', None) if 'name' in row else None
@@ -256,52 +219,6 @@ def find_candidates(
     return candidates
 
 
-# ---------------------------------------------------------------------------
-# Sampling
-# ---------------------------------------------------------------------------
-
-def stratified_sample(
-    candidates: List[Dict[str, Any]],
-    sample_size: int,
-    max_per_huc: int,
-    seed: int,
-) -> List[Dict[str, Any]]:
-    """Sample bridges stratified across HUC8s."""
-    rng = random.Random(seed)
-
-    # Deduplicate by osm_id within each HUC
-    by_huc = defaultdict(list)
-    seen_per_huc = defaultdict(set)
-    for entry in candidates:
-        huc = entry["huc_id"]
-        osm_id = entry["osm_id"]
-        if osm_id not in seen_per_huc[huc]:
-            seen_per_huc[huc].add(osm_id)
-            by_huc[huc].append(entry)
-
-    # Shuffle within each HUC
-    for huc in by_huc:
-        rng.shuffle(by_huc[huc])
-
-    # Round-robin across HUCs
-    sample = []
-    huc_counts = defaultdict(int)
-    huc_order = sorted(by_huc.keys())
-    rng.shuffle(huc_order)
-
-    for pass_num in range(max_per_huc):
-        for huc in huc_order:
-            if len(sample) >= sample_size:
-                break
-            bridges = by_huc[huc]
-            if huc_counts[huc] < len(bridges) and huc_counts[huc] < max_per_huc:
-                sample.append(bridges[huc_counts[huc]])
-                huc_counts[huc] += 1
-        if len(sample) >= sample_size:
-            break
-
-    sample.sort(key=lambda x: (x["huc_id"], x["osm_id"]))
-    return sample
 
 
 # ---------------------------------------------------------------------------
