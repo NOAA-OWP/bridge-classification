@@ -484,6 +484,41 @@ Plots training curves from PyTorch Lightning CSVLogger output.
 
 ---
 
+### `utils/visualize_pointcloud.py`
+
+Renders side-by-side 3D LiDAR point cloud figures for poster/presentation use.
+
+**Modes:**
+
+| Mode              | Left panel                     | Right panel                    |
+| ----------------- | ------------------------------ | ------------------------------ |
+| `gold-vs-model`   | Human annotations (gold NPY)  | Model predictions (inference LAZ) |
+| `source-vs-silver` | Raw elevation (source LAZ)    | Weak supervision labels (silver LAZ) |
+
+**CLI arguments (both modes):**
+
+| Argument       | Default               | Description                              |
+| -------------- | --------------------- | ---------------------------------------- |
+| `-o`/`--output` | `notebooks/outputs/` | Output PNG file path                     |
+| `--title`      | None                  | Figure suptitle                          |
+| `--elev`       | 30                    | 3D view elevation angle                  |
+| `--azim`       | 225                   | 3D view azimuth angle                    |
+| `--point-size` | 8                     | Scatter point size                       |
+| `--max-points` | 50000                 | Downsample limit per cloud               |
+| `--dpi`        | 300                   | Output resolution                        |
+
+**Example:**
+
+```bash
+python utils/visualize_pointcloud.py gold-vs-model \
+    --gold data/ml-data/gold-data-normalized/03070101/bridge_40787878_GA_Central_1_2018.npy \
+    --model data/ml-data/evaluation_results/v5-gold-134/inference_output/03070101/bridge_40787878_GA_Central_1_2018.laz \
+    --title "Bridge 40787878 (GA) — Deck IoU: 79.3%" \
+    -o notebooks/outputs/gold_vs_model.png
+```
+
+---
+
 ### `utils/download_osm_hucs.py`
 
 Downloads OSM bridge GeoPackages by HUC from S3.

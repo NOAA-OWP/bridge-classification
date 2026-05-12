@@ -21,6 +21,14 @@ CLASS_COLORS = {
     3: "yellow",
 }
 
+# High-contrast hex palette for publication-quality visualizations
+CLASS_COLORS_HEX = {
+    0: "#718096",   # Background  — neutral gray
+    1: "#dd6b20",   # Ground/Water — warm orange
+    2: "#3182ce",   # Bridge Deck  — strong blue
+    3: "#c0392b",   # Obstacles    — red
+}
+
 # --- ASPRS <-> Model class codes ---
 BRIDGE_DECK_MODEL_CLASS = 2
 BRIDGE_DECK_ASPRS_CODE = 17

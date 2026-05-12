@@ -610,3 +610,23 @@ When comparing exactly two experiments, add `--merge-resumed` to merge them into
 **Reference**
 
 For full CLI options: `python utils/visualize_metrics.py --help`
+
+#### Point Cloud Visualization
+
+`utils/visualize_pointcloud.py` renders side-by-side 3D point cloud figures comparing gold annotations vs model predictions, or raw elevation vs weak supervision labels.
+
+```bash
+# Gold annotations vs model predictions
+python utils/visualize_pointcloud.py gold-vs-model \
+    --gold data/ml-data/gold-data-normalized/03070101/bridge_40787878_GA_Central_1_2018.npy \
+    --model data/ml-data/evaluation_results/v5-gold-134/inference_output/03070101/bridge_40787878_GA_Central_1_2018.laz \
+    -o notebooks/outputs/gold_vs_model.png
+
+# Raw elevation vs RANSAC weak supervision labels
+python utils/visualize_pointcloud.py source-vs-silver \
+    --source data/ml-data/source/01010005/bridge_1090522653_ME_Eastern_TL_2017.laz \
+    --silver data/ml-data/silver_training/01010005/bridge_1090522653_ME_Eastern_TL_2017.laz \
+    -o notebooks/outputs/source_vs_silver.png
+```
+
+For full CLI options: `python utils/visualize_pointcloud.py --help`
