@@ -38,6 +38,9 @@ DEFAULT_POINT_SIZE = 8
 DEFAULT_MAX_POINTS = 50_000
 DEFAULT_DPI = 300
 DEFAULT_FONT_SCALE = 1.0
+DEFAULT_BG_COLOR = "white"
+DEFAULT_BORDER_COLOR = "#cccccc"
+DEFAULT_BORDER_WIDTH = 0
 
 
 def load_laz(path: Path) -> tuple[np.ndarray, np.ndarray]:
@@ -122,6 +125,8 @@ def plot_gold_vs_model(
     title: str | None = None, elev: float = DEFAULT_ELEV, azim: float = DEFAULT_AZIM,
     point_size: float = DEFAULT_POINT_SIZE, max_points: int = DEFAULT_MAX_POINTS,
     dpi: int = DEFAULT_DPI, font_scale: float = DEFAULT_FONT_SCALE,
+    bg_color: str = DEFAULT_BG_COLOR, border_color: str = DEFAULT_BORDER_COLOR,
+    border_width: float = DEFAULT_BORDER_WIDTH,
 ) -> None:
     """Side-by-side: human gold annotations vs model inference predictions."""
     gold_xyz, gold_labels = load_gold_npy(gold_path)
@@ -133,7 +138,10 @@ def plot_gold_vs_model(
     gold_xyz, gold_labels = downsample(gold_xyz, gold_labels, max_points, 42)
     model_xyz, model_labels = downsample(model_xyz, model_labels, max_points, 43)
 
-    fig = plt.figure(figsize=(18, 8), facecolor="white")
+    fig = plt.figure(figsize=(18, 8), facecolor=bg_color)
+    if border_width > 0:
+        fig.patch.set_edgecolor(border_color)
+        fig.patch.set_linewidth(border_width)
     if title:
         fig.suptitle(title, fontsize=15 * font_scale, fontweight="bold", y=1.0, color="#1a365d")
 
@@ -151,7 +159,7 @@ def plot_gold_vs_model(
     plt.subplots_adjust(wspace=0.05, top=0.88)
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output_path, dpi=dpi, bbox_inches="tight", facecolor="white")
+    fig.savefig(output_path, dpi=dpi, bbox_inches="tight", facecolor=bg_color, edgecolor=border_color if border_width > 0 else "none")
     plt.close()
     print(f"Saved: {output_path}")
 
@@ -161,6 +169,8 @@ def plot_source_vs_silver(
     title: str | None = None, elev: float = DEFAULT_ELEV, azim: float = DEFAULT_AZIM,
     point_size: float = DEFAULT_POINT_SIZE, max_points: int = DEFAULT_MAX_POINTS,
     dpi: int = DEFAULT_DPI, font_scale: float = DEFAULT_FONT_SCALE,
+    bg_color: str = DEFAULT_BG_COLOR, border_color: str = DEFAULT_BORDER_COLOR,
+    border_width: float = DEFAULT_BORDER_WIDTH,
 ) -> None:
     """Side-by-side: raw LiDAR elevation vs RANSAC weak supervision labels."""
     src_xyz, _ = load_laz(source_path)
@@ -172,7 +182,10 @@ def plot_source_vs_silver(
     src_xyz, _ = downsample(src_xyz, None, max_points, 42)
     sil_xyz, sil_labels = downsample(sil_xyz, sil_labels, max_points, 43)
 
-    fig = plt.figure(figsize=(18, 8), facecolor="white")
+    fig = plt.figure(figsize=(18, 8), facecolor=bg_color)
+    if border_width > 0:
+        fig.patch.set_edgecolor(border_color)
+        fig.patch.set_linewidth(border_width)
     if title:
         fig.suptitle(title, fontsize=15 * font_scale, fontweight="bold", y=0.96, color="#1a365d")
 
@@ -201,7 +214,7 @@ def plot_source_vs_silver(
     plt.subplots_adjust(wspace=0.05, top=0.90)
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output_path, dpi=dpi, bbox_inches="tight", facecolor="white")
+    fig.savefig(output_path, dpi=dpi, bbox_inches="tight", facecolor=bg_color, edgecolor=border_color if border_width > 0 else "none")
     plt.close()
     print(f"Saved: {output_path}")
 
@@ -221,6 +234,9 @@ def main():
     gm.add_argument("--max-points", type=int, default=DEFAULT_MAX_POINTS)
     gm.add_argument("--dpi", type=int, default=DEFAULT_DPI)
     gm.add_argument("--font-scale", type=float, default=DEFAULT_FONT_SCALE, help="Multiply all font sizes (1.5-1.8 for posters)")
+    gm.add_argument("--bg-color", default=DEFAULT_BG_COLOR, help="Figure background color (e.g. '#F0F0F0')")
+    gm.add_argument("--border-color", default=DEFAULT_BORDER_COLOR, help="Border color")
+    gm.add_argument("--border-width", type=float, default=DEFAULT_BORDER_WIDTH, help="Border width in points (0=no border)")
 
     ss = sub.add_parser("source-vs-silver", help="Raw elevation vs silver labels")
     ss.add_argument("--source", required=True, help="Path to source .laz file")
@@ -233,6 +249,9 @@ def main():
     ss.add_argument("--max-points", type=int, default=DEFAULT_MAX_POINTS)
     ss.add_argument("--dpi", type=int, default=DEFAULT_DPI)
     ss.add_argument("--font-scale", type=float, default=DEFAULT_FONT_SCALE, help="Multiply all font sizes (1.5-1.8 for posters)")
+    ss.add_argument("--bg-color", default=DEFAULT_BG_COLOR, help="Figure background color (e.g. '#F0F0F0')")
+    ss.add_argument("--border-color", default=DEFAULT_BORDER_COLOR, help="Border color")
+    ss.add_argument("--border-width", type=float, default=DEFAULT_BORDER_WIDTH, help="Border width in points (0=no border)")
 
     args = parser.parse_args()
 
@@ -242,6 +261,8 @@ def main():
             title=args.title, elev=args.elev, azim=args.azim,
             point_size=args.point_size, max_points=args.max_points,
             dpi=args.dpi, font_scale=args.font_scale,
+            bg_color=args.bg_color, border_color=args.border_color,
+            border_width=args.border_width,
         )
     elif args.mode == "source-vs-silver":
         plot_source_vs_silver(
@@ -249,6 +270,8 @@ def main():
             title=args.title, elev=args.elev, azim=args.azim,
             point_size=args.point_size, max_points=args.max_points,
             dpi=args.dpi, font_scale=args.font_scale,
+            bg_color=args.bg_color, border_color=args.border_color,
+            border_width=args.border_width,
         )
 
 
