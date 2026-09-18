@@ -10,16 +10,29 @@ on:
       - notebooks/**
       - mkdocs.yml
       - requirements-docs.txt
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - docs/**
+      - src/**
+      - notebooks/**
+      - mkdocs.yml
+      - requirements-docs.txt
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  deploy:
+  docs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
@@ -33,5 +46,27 @@ jobs:
           sed -i "s|repo_url:.*|repo_url: https://github.com/${{ github.repository }}|" mkdocs.yml
           sed -i "s|repo_name:.*|repo_name: ${{ github.repository }}|" mkdocs.yml
 
-      - name: Deploy to GitHub Pages
-        run: mkdocs gh-deploy --force
+      - name: Validate build (PR only)
+        if: github.event_name == 'pull_request'
+        run: mkdocs build --strict
+
+      - name: Configure git for mike
+        if: github.event_name != 'pull_request'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Deploy dev docs (push to main)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: mike deploy dev --push
+
+      - name: Deploy versioned docs (tag push)
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          mike deploy "$VERSION" latest --update-aliases --push
+          mike set-default latest --push
+
+      - name: Deploy docs (manual trigger)
+        if: github.event_name == 'workflow_dispatch'
+        run: mike deploy dev --push

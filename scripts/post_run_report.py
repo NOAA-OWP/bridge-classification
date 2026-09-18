@@ -6,22 +6,29 @@ Reads _run_config.json (saved at submission), audits S3 outputs, queries
 CloudWatch logs for per-child summaries and per-bridge timing, and saves
 _run_report.json to the output prefix.
 
-Usage:
-    python scripts/post_run_report.py \
-        --bucket fimc-data \
-        --output-prefix bridge-classification/runs/noaa-bridges-without-tif/predictions \
-        --mode masked \
-        --profile Data \
-        --batch-profile test-se
+--profile:       S3 data access. Falls back to AWS_PROFILE if not set.
+--batch-profile: Batch/CloudWatch access. Only needed when Batch infra
+                 is in a different account than the S3 data bucket.
 
-    # With explicit input prefix (for S3 extension probing during audit):
+Usage:
+    # Auto-discovers --bucket, --output-prefix, --region from terraform outputs
+    python scripts/post_run_report.py --mode masked --profile my-profile
+
+    # Explicit overrides
     python scripts/post_run_report.py \
-        --bucket fimc-data \
-        --output-prefix bridge-classification/runs/.../predictions \
-        --input-prefix bridge-classification/runs/.../source \
+        --bucket my-bucket \
+        --output-prefix bridge-classification/runs/my-run/predictions \
         --mode masked \
-        --profile Data \
-        --batch-profile test-se
+        --profile my-profile
+
+    # Cross-account: S3 data and Batch/CloudWatch on different profiles
+    python scripts/post_run_report.py \
+        --bucket my-bucket \
+        --output-prefix bridge-classification/runs/my-run/predictions \
+        --input-prefix bridge-classification/ml-data/source \
+        --mode masked \
+        --profile data-profile \
+        --batch-profile infra-profile
 """
 
 import argparse
@@ -40,6 +47,7 @@ from src.s3_client import (
     create_s3_client, download_json, stream_manifest_lines,
     upload_json, upload_text,
 )
+from src.terraform import get_terraform_outputs
 
 
 SUMMARY_PATTERN = re.compile(
@@ -51,6 +59,9 @@ SUMMARY_PATTERN = re.compile(
 BRIDGE_TIME_PATTERN = re.compile(r'bridge_seconds=([\d.]+)s')
 
 LOG_GROUP = '/aws/batch/bridge-classifier'
+CLOUDWATCH_TIME_PADDING_MS = 60_000
+MAX_MISSING_ENTRIES = 1000
+MAX_MISSING_REASONS_DISPLAY = 10
 
 
 def describe_batch_job(batch_client: Any, job_id: str) -> Dict[str, Any]:
@@ -94,7 +105,7 @@ def _query_cloudwatch(
     kwargs = {
         'logGroupName': LOG_GROUP,
         'startTime': start_ms,
-        'endTime': end_ms + 60_000,
+        'endTime': end_ms + CLOUDWATCH_TIME_PADDING_MS,
         'filterPattern': filter_pattern,
     }
     while True:
@@ -184,8 +195,8 @@ def compute_percentile(values: List[float], pct: float) -> float:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description='Bridge Classification - Post-Run Report')
-    parser.add_argument('--bucket', type=str, required=True, help='S3 bucket')
-    parser.add_argument('--output-prefix', type=str, required=True, help='S3 output prefix (where predictions are)')
+    parser.add_argument('--bucket', type=str, help='S3 bucket (default: from terraform output s3_bucket)')
+    parser.add_argument('--output-prefix', type=str, help='S3 output prefix (default: from terraform output s3_output_prefix)')
     parser.add_argument('--input-prefix', type=str, default='', help='S3 input prefix (for extension probing during audit)')
     parser.add_argument('--mode', type=InferenceMode, default=InferenceMode.MASKED,
                         help='Inference mode: masked (default), raw, or both')
@@ -193,27 +204,44 @@ def main() -> None:
                         help=f'Parallel S3 audit workers (default: {DEFAULT_AUDIT_WORKERS})')
     parser.add_argument('--skip-timing', action='store_true',
                         help='Skip per-bridge timing extraction (faster, fewer CloudWatch queries)')
-    parser.add_argument('--region', type=str, default='us-east-1',
-                        help='AWS region for Batch and CloudWatch (default: us-east-1)')
+    parser.add_argument('--region', type=str, help='AWS region for Batch and CloudWatch (default: from terraform or us-east-1)')
     parser.add_argument('--profile', type=str, help='AWS profile for S3 operations')
     parser.add_argument('--batch-profile', type=str,
                         help='AWS profile for Batch and CloudWatch (defaults to --profile)')
     args = parser.parse_args()
 
-    batch_profile = args.batch_profile or args.profile
+    # --- Resolve config from terraform outputs ---
+    tf = get_terraform_outputs()
+    bucket = args.bucket or tf.get('s3_bucket')
+    output_prefix = args.output_prefix or tf.get('s3_output_prefix')
+    region = args.region or os.environ.get('AWS_REGION') or tf.get('aws_region') or 'us-east-1'
+
+    missing_config = []
+    if not bucket:
+        missing_config.append('--bucket (or set s3_bucket in terraform.tfvars)')
+    if not output_prefix:
+        missing_config.append('--output-prefix (or set s3_output_prefix in terraform.tfvars)')
+    if missing_config:
+        print(f"ERROR: Missing config: {', '.join(missing_config)}")
+        sys.exit(1)
+
+    batch_profile = args.batch_profile or args.profile or os.environ.get('AWS_PROFILE')
     s3 = create_s3_client(args.profile)
 
     # --- 1. Load run config ---
     print("Loading run config from S3...")
     try:
-        config_key = f"{args.output_prefix}/_run_config.json"
-        run_config = download_json(s3, args.bucket, config_key)
+        config_key = f"{output_prefix}/_run_config.json"
+        run_config = download_json(s3, bucket, config_key)
     except Exception as e:
-        print(f"ERROR: Could not load _run_config.json: {e}")
-        print("Was --bucket and --output-prefix passed to submit_batch_job.py?")
+        print(f"ERROR: Could not load s3://{bucket}/{output_prefix}/_run_config.json: {e}")
+        print("Was S3_OUTPUT_PREFIX set correctly when submit_batch_job.py ran?")
         sys.exit(1)
 
     job_id = run_config.get('job_id')
+    if not job_id:
+        print("ERROR: _run_config.json missing job_id")
+        sys.exit(1)
     manifest_uri = run_config.get('manifest_uri')
     expected_array_size = run_config.get('array_size', 0)
     print(f"Job: {run_config.get('job_name')} (ID: {job_id})")
@@ -223,7 +251,7 @@ def main() -> None:
     # --- 2. Check job status ---
     print("\nChecking job status...")
     session = boto3.Session(profile_name=batch_profile)
-    batch_client = session.client('batch', region_name=args.region)
+    batch_client = session.client('batch', region_name=region)
     job_info = describe_batch_job(batch_client, job_id)
     print(f"Status: {job_info['status']}")
 
@@ -234,9 +262,9 @@ def main() -> None:
 
     found, missing = audit_s3_outputs(
         profile=args.profile,
-        bucket=args.bucket,
+        bucket=bucket,
         input_prefix=args.input_prefix,
-        output_prefix=args.output_prefix,
+        output_prefix=output_prefix,
         mode=args.mode,
         manifest_lines=manifest_lines,
         workers=args.audit_workers,
@@ -244,7 +272,7 @@ def main() -> None:
     print(f"Found: {found}, Missing: {len(missing)}")
 
     # --- 4. Query CloudWatch ---
-    logs_client = session.client('logs', region_name=args.region)
+    logs_client = session.client('logs', region_name=region)
 
     totals = {}
     child_seconds: List[float] = []
@@ -282,7 +310,7 @@ def main() -> None:
             missing_reasons = query_cloudwatch_missing_reasons(logs_client, start_ms, end_ms, missing)
             if missing_reasons:
                 print(f"Found reasons for {len(missing_reasons)} of {len(missing)} bridges:")
-                for bridge, reason in list(missing_reasons.items())[:10]:
+                for bridge, reason in list(missing_reasons.items())[:MAX_MISSING_REASONS_DISPLAY]:
                     print(f"  {bridge}: {reason}")
     else:
         print("\nWARNING: Job has no timestamps - skipping CloudWatch queries")
@@ -320,25 +348,25 @@ def main() -> None:
     }
 
     if missing:
-        report['missing_entries'] = missing[:1000]
-        if len(missing) > 1000:
+        report['missing_entries'] = missing[:MAX_MISSING_ENTRIES]
+        if len(missing) > MAX_MISSING_ENTRIES:
             report['missing_entries_truncated'] = True
             report['total_missing'] = len(missing)
         if missing_reasons:
-            capped_reasons = {k: v for k, v in missing_reasons.items() if k in set(missing[:1000])}
+            capped_reasons = {k: v for k, v in missing_reasons.items() if k in set(missing[:MAX_MISSING_ENTRIES])}
             report['missing_reasons'] = capped_reasons
 
     # --- 6. Save report to S3 ---
-    report_key = f"{args.output_prefix}/_run_report.json"
-    upload_json(s3, report, args.bucket, report_key)
-    print(f"\nReport saved: s3://{args.bucket}/{report_key}")
+    report_key = f"{output_prefix}/_run_report.json"
+    upload_json(s3, report, bucket, report_key)
+    print(f"\nReport saved: s3://{bucket}/{report_key}")
 
     # --- 7. Save missing manifest ---
     if missing:
-        missing_key = f"{args.output_prefix}/_missing.txt"
+        missing_key = f"{output_prefix}/_missing.txt"
         missing_text = "\n".join(missing) + "\n"
-        upload_text(s3, missing_text, args.bucket, missing_key)
-        print(f"Missing manifest: s3://{args.bucket}/{missing_key} ({len(missing)} entries)")
+        upload_text(s3, missing_text, bucket, missing_key)
+        print(f"Missing manifest: s3://{bucket}/{missing_key} ({len(missing)} entries)")
 
     # --- 8. Print summary ---
     print(f"\n{'='*60}")
@@ -359,7 +387,7 @@ def main() -> None:
         ce = report['cost_estimate']
         print(f"Cost est:   ${ce['estimated_compute_usd']:.2f} "
               f"({ce['total_child_hours']:.4f} hrs x ${spot_rate}/hr)")
-    print(f"Report:     s3://{args.bucket}/{report_key}")
+    print(f"Report:     s3://{bucket}/{report_key}")
     print(f"{'='*60}")
 
 

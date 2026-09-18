@@ -1,0 +1,16 @@
+# Copy to backend.hcl and fill in. backend.hcl is git-ignored.
+#
+# Option A: dedicated state bucket (created by bootstrap layer)
+#   bucket = "bridge-classifier-terraform-state-<ACCOUNT_ID>"
+#   key    = "foundation/terraform.tfstate"
+#
+# Option B: existing bucket (skip bootstrap, use a key prefix to isolate state)
+#   bucket = "my-existing-bucket"
+#   key    = "some-prefix/terraform-state/foundation/terraform.tfstate"
+#
+bucket              = "<BUCKET_NAME>"
+key                 = "<KEY_PATH>/foundation/terraform.tfstate"
+region              = "us-east-1"
+use_lockfile        = true
+encrypt             = true
+allowed_account_ids = ["<ACCOUNT_ID>"]

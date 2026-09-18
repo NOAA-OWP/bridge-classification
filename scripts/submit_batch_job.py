@@ -1,6 +1,11 @@
 """
 Bridge Classification — Batch Job Submission Script
 
+AWS_PROFILE: the account where Batch infra lives. Used for job submission.
+--profile:   S3 data access override. Only needed when the manifest/data
+             bucket is in a different account than Batch. Falls back to
+             AWS_PROFILE if not set.
+
 Usage:
     # Array job from S3 manifest
     python scripts/submit_batch_job.py --manifest s3://bucket/path/manifest.txt
@@ -20,9 +25,10 @@ Usage:
     # Single job (no array)
     python scripts/submit_batch_job.py --single
 
-    # With run config tracking (saves _run_config.json to S3 for post-run reporting)
+    # Run config (_run_config.json) is saved automatically from terraform outputs.
+    # Override output location via --env:
     python scripts/submit_batch_job.py --manifest s3://bucket/manifest.txt \
-        --bucket fimc-data --output-prefix bridge-classification/runs/my-run/predictions
+        --env S3_OUTPUT_PREFIX=other/prefix --env S3_BUCKET=other-bucket
 """
 
 import argparse
@@ -39,32 +45,11 @@ import boto3
 # Add project root to path so we can import from src/
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from src.s3_client import create_s3_client, stream_manifest_lines, upload_json
+from src.terraform import get_terraform_outputs
 
 MAX_ARRAY_SIZE = 10_000  # AWS Batch hard limit
 DEFAULT_CHUNK_TARGET = 60
-SPOT_PRICE_PER_HOUR = 0.234  # g4dn.xlarge spot estimate (fluctuates) — check https://aws.amazon.com/ec2/spot/pricing/
-
-
-def get_terraform_outputs(terraform_dir: str = 'terraform') -> Dict[str, str]:
-    """Read AWS config from terraform outputs."""
-    outputs = {}
-    keys = ['aws_region', 'aws_profile', 'job_definition_name', 'job_queue_name', 's3_manifest_uri']
-
-    if not os.path.isdir(terraform_dir):
-        return outputs
-
-    for key in keys:
-        try:
-            result = subprocess.run(
-                ['terraform', 'output', '-raw', key],
-                cwd=terraform_dir, capture_output=True, text=True, timeout=10
-            )
-            if result.returncode == 0 and result.stdout.strip():
-                outputs[key] = result.stdout.strip()
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            continue
-
-    return outputs
+SPOT_PRICE_PER_HOUR = 0.234  # g4dn.xlarge spot estimate (fluctuates) - check https://aws.amazon.com/ec2/spot/pricing/
 
 
 def count_manifest_lines(s3_client: Any, manifest_uri: str) -> int:
@@ -74,21 +59,20 @@ def count_manifest_lines(s3_client: Any, manifest_uri: str) -> int:
 
 def validate_manifest(s3_client: Any, manifest_uri: str) -> tuple:
     """Check manifest for common issues. Returns (line_count, issues)."""
-    lines = list(stream_manifest_lines(s3_client, manifest_uri))
     issues = []
+    seen = {}
+    count = 0
 
-    for i, line in enumerate(lines, 1):
+    for i, line in enumerate(stream_manifest_lines(s3_client, manifest_uri), 1):
+        count = i
         if '/' not in line:
             issues.append(f"Line {i}: no '/' separator (expected huc_id/bridge_stem): {line[:80]}")
-
-    seen = {}
-    for i, line in enumerate(lines, 1):
         if line in seen:
             issues.append(f"Line {i}: duplicate of line {seen[line]}: {line[:80]}")
         else:
             seen[line] = i
 
-    return len(lines), issues
+    return count, issues
 
 
 def compute_array_size(total: int, chunk_target: int, max_array_size: int = MAX_ARRAY_SIZE) -> int:
@@ -120,18 +104,27 @@ def main() -> None:
     parser.add_argument('--chunk-target', type=int, default=DEFAULT_CHUNK_TARGET,
                         help=f'Target files per array child (default: {DEFAULT_CHUNK_TARGET})')
     parser.add_argument('--env', action='append', default=[],
-                        help='Environment override as KEY=VALUE (can be repeated)')
+                        help='Container env override as KEY=VALUE (can repeat). '
+                             'Common: S3_OUTPUT_PREFIX, S3_BUCKET, INFERENCE_MODE, BRIDGE_TIMEOUT')
     parser.add_argument('--job-name', type=str, default='bridge-inference',
                         help='Job name prefix (default: bridge-inference)')
     parser.add_argument('--profile', type=str, help='AWS profile override for S3 access')
-    parser.add_argument('--bucket', type=str, help='S3 bucket for saving run config (required for run tracking)')
-    parser.add_argument('--output-prefix', type=str, help='S3 output prefix for saving run config (required for run tracking)')
     args = parser.parse_args()
+
+    # --- Validate flag combinations ---
+    if args.total is not None and args.total <= 0:
+        parser.error("--total must be positive")
+    if args.chunk_target < 1:
+        parser.error("--chunk-target must be >= 1")
+    if args.validate and not args.manifest:
+        parser.error("--validate requires --manifest")
+    if args.single and (args.manifest or args.total is not None):
+        parser.error("--single cannot be combined with --manifest or --total")
 
     # --- Read terraform config ---
     tf = get_terraform_outputs()
     aws_region = os.environ.get('AWS_REGION') or tf.get('aws_region')
-    aws_profile = os.environ.get('AWS_PROFILE') or tf.get('aws_profile')
+    aws_profile = os.environ.get('AWS_PROFILE')
     job_def_name = os.environ.get('JOB_DEF_NAME') or tf.get('job_definition_name')
     job_queue = os.environ.get('JOB_QUEUE') or tf.get('job_queue_name')
 
@@ -142,7 +135,7 @@ def main() -> None:
     if not job_queue: missing.append('JOB_QUEUE')
     if missing:
         print(f"ERROR: Missing config: {' '.join(missing)}")
-        print("Run 'cd terraform && terraform init && terraform apply' or set env vars.")
+        print("Run 'cd infra/terraform/app && terraform init && terraform apply' or set env vars.")
         sys.exit(1)
 
     # Fall back to s3_manifest_uri from terraform outputs when --manifest not provided
@@ -154,7 +147,7 @@ def main() -> None:
     s3 = create_s3_client(s3_profile)
 
     # --- Validate manifest ---
-    if args.validate and manifest:
+    if args.validate:
         print(f"Validating manifest: {manifest}")
         line_count, issues = validate_manifest(s3, manifest)
         print(f"Lines: {line_count}")
@@ -174,7 +167,7 @@ def main() -> None:
         array_size = 1
         total_files = 1
         print("Mode: single job (no array)")
-    elif args.total:
+    elif args.total is not None:
         total_files = args.total
         array_size = compute_array_size(total_files, args.chunk_target)
         print(f"Total files (provided): {total_files}")
@@ -188,7 +181,6 @@ def main() -> None:
         print(f"Total files in manifest: {total_files}")
     else:
         parser.error("Provide --manifest, --total, or --single (or set s3_manifest_uri in terraform.tfvars)")
-        return
 
     actual_chunk = math.ceil(total_files / array_size) if array_size > 0 else total_files
     ideal_array = math.ceil(total_files / args.chunk_target) if args.chunk_target > 0 else 1
@@ -256,7 +248,13 @@ def main() -> None:
     print(f"Monitor at: https://console.aws.amazon.com/batch/home?region={aws_region}#jobs")
 
     # --- Save run config to S3 ---
-    if args.bucket and args.output_prefix:
+    run_bucket = env_overrides.get('S3_BUCKET') or tf.get('s3_bucket')
+    run_output_prefix = (
+        env_overrides.get('S3_OUTPUT_PREFIX')
+        or tf.get('s3_output_prefix')
+    )
+
+    if run_bucket and run_output_prefix:
         git_commit = "unknown"
         try:
             git_commit = subprocess.check_output(
@@ -270,8 +268,8 @@ def main() -> None:
             "job_name": full_job_name,
             "submitted_at": datetime.now(timezone.utc).isoformat(),
             "manifest_uri": manifest,
-            "s3_bucket": args.bucket,
-            "s3_output_prefix": args.output_prefix,
+            "s3_bucket": run_bucket,
+            "s3_output_prefix": run_output_prefix,
             "array_size": array_size,
             "chunk_target": args.chunk_target,
             "total_bridges": total_files,
@@ -280,11 +278,12 @@ def main() -> None:
             "env_overrides": env_overrides,
         }
 
-        config_key = f"{args.output_prefix}/_run_config.json"
-        upload_json(s3, run_config, args.bucket, config_key)
-        print(f"Run config saved: s3://{args.bucket}/{config_key}")
+        config_key = f"{run_output_prefix}/_run_config.json"
+        upload_json(s3, run_config, run_bucket, config_key)
+        print(f"Run config saved: s3://{run_bucket}/{config_key}")
     else:
-        print("\nTip: pass --bucket and --output-prefix to save run config to S3 for post-run reporting")
+        print("\nWARN: Could not determine s3_bucket/s3_output_prefix - run config not saved.")
+        print("Set them in terraform.tfvars or pass --env S3_BUCKET=... --env S3_OUTPUT_PREFIX=...")
 
 
 if __name__ == '__main__':

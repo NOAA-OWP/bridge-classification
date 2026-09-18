@@ -1,0 +1,10 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is git-ignored.
+allowed_account_id = "<ACCOUNT_ID>" # REQUIRED - 12-digit account you're applying into
+
+# --- Ownership tags (set if required by your org) ---
+# team = "your-team"
+# poc  = "your-name"
+
+# Optional overrides (defaults shown):
+# project_name = "bridge-classifier"
+# region       = "us-east-1"

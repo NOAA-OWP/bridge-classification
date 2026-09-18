@@ -87,7 +87,7 @@ def main() -> None:
     uri = model_entry["s3_checkpoint_uri"]
     print(f"\nPromoted: {args.name} to production")
     print(f"Checkpoint: {uri}")
-    print(f"\nUpdate terraform.tfvars:")
+    print(f"\nUpdate infra/terraform/app/terraform.tfvars:")
     print(f'  s3_model_uri = "{uri}"')
 
 

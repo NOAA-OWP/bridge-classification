@@ -36,10 +36,10 @@ flowchart LR
 
 ## 2. Deploy Infrastructure
 
-Follow the [Terraform README](https://github.com/NGWPC/bridge-classification/blob/main/infra/terraform/README.md) to deploy the three layers:
+Follow the [Terraform README](https://github.com/NGWPC/bridge-classification/blob/main/infra/terraform/README.md) to deploy:
 
 ```
-bootstrap (optional) -> foundation -> app
+bootstrap (optional) -> foundation (optional) -> app
 ```
 
 Each layer has `backend.hcl.example` and `terraform.tfvars.example` - copy both and fill in your values.
@@ -48,10 +48,11 @@ Each layer has `backend.hcl.example` and `terraform.tfvars.example` - copy both 
 
 | Scenario | What to do |
 |----------|-----------|
-| Fresh account, no existing resources | Run all three layers with `create_iam = true`, `create_networking = true` |
+| Fresh account, no existing resources | Run all layers: `create_networking = true` in foundation, `create_iam = true` in app |
 | Existing S3 bucket for state | Skip bootstrap, point `backend.hcl` at your bucket with a key prefix |
-| Existing IAM roles and VPC | Set `create_iam = false`, `create_networking = false` in foundation, provide existing ARNs/IDs |
-| Account already has ECR repo | `terraform import aws_ecr_repository.inference <repo-name>` |
+| Existing VPC and IAM roles | Skip foundation, set `create_iam = false` in app, provide existing ARNs/IDs and VPC/subnet IDs |
+| Using GHCR (default) | Set `create_ecr = false` and `inference_image_repo` in app |
+| Using ECR | Set `create_ecr = true` in app (default) |
 
 Set your AWS profile before running any commands:
 
@@ -136,19 +137,24 @@ See [API Reference: Inference & Cloud](api/inference-cloud.md) for registry func
 
 ## 5. Build & Push Docker Image
 
+**GHCR (default):** images are published automatically on push to main by the `build-dev-images` GitHub Actions workflow.
+Tags: `sha-<short>` (immutable) + `dev` (floating).
+No manual steps needed.
+
+**ECR (manual, when `create_ecr = true`):**
+
 ```bash
 export AWS_PROFILE=<infra-profile>
 chmod +x ./scripts/build_and_push.sh
 ./scripts/build_and_push.sh
 ```
 
-Reads ECR URL and region from terraform outputs.
-Tags with `:latest` and `:git-<sha>` for rollback.
+Reads image repo and region from terraform outputs.
 
 **When to rebuild:** only when you change code (`src/`, `scripts/`, or `Dockerfile`).
 Changing S3 paths, model URI, or inference config in `terraform.tfvars` does NOT require a rebuild - those are environment variables in the job definition.
 
-See [AWS Batch Inference: Build and Push](aws-batch-inference.md#3-build-and-push-docker-image) for details.
+See [AWS Batch Inference: Build and Push](aws-batch-inference.md#2-build-and-push-docker-image) for details.
 
 ---
 
@@ -171,7 +177,7 @@ python scripts/submit_batch_job.py \
     --profile <data-profile>
 ```
 
-**Cross-account setup:** use `--profile` for S3 data access and `AWS_PROFILE` for Batch/ECR operations.
+**Cross-account setup:** use `--profile` for S3 data access and `AWS_PROFILE` for Batch operations.
 Override output location with `--env S3_OUTPUT_PREFIX=<path>`.
 
 ### Monitor
@@ -180,7 +186,7 @@ Override output location with `--env S3_OUTPUT_PREFIX=<path>`.
 aws logs tail /aws/batch/bridge-classifier --follow --profile <infra-profile>
 ```
 
-See [AWS Batch Inference: Submit a Job](aws-batch-inference.md#4-submit-a-job) and [Monitor](aws-batch-inference.md#5-monitor) for full options.
+See [AWS Batch Inference: Submit a Job](aws-batch-inference.md#3-submit-a-job) and [Monitor](aws-batch-inference.md#4-monitor) for full options.
 
 ---
 
@@ -199,7 +205,7 @@ python scripts/post_run_report.py \
 Do not include a trailing slash on `--output-prefix`.
 The report auto-discovers `--bucket` from terraform outputs.
 
-See [AWS Batch Inference: Post-Run Report](aws-batch-inference.md#7-post-run-report) for details.
+See [AWS Batch Inference: Post-Run Report](aws-batch-inference.md#6-post-run-report) for details.
 
 ### Re-run failed or missing bridges
 
@@ -352,10 +358,10 @@ No manual intervention needed unless all retries are exhausted.
 |-------|-------|-----|
 | `NoSuchBucket` | `s3_bucket` in terraform.tfvars is a prefix, not a bucket name | Set to the actual S3 bucket name (e.g. `fimc-data`, not `bridge-classification`) |
 | `AccessDenied` on S3 | Cross-account access not configured | The data bucket policy must grant access to the Batch job role from the infra account |
-| `RepositoryAlreadyExistsException` | ECR repo exists in this account | `terraform import aws_ecr_repository.inference <repo-name>` |
+| `RepositoryAlreadyExistsException` | ECR repo exists (when `create_ecr = true`) | `terraform import aws_ecr_repository.inference <repo-name>` |
 | `Backend configuration changed` | Switching between accounts | `terraform init -backend-config=backend.hcl -reconfigure` |
 | `JOB_DEF_NAME` missing | App layer not fully applied | Run `terraform apply` in `infra/terraform/app` |
-| `timeout` not found (macOS) | `build_and_push.sh` uses GNU timeout | Use the version on `feature/iac-rework` branch which removed the timeout dependency |
+| `timeout` not found (macOS) | Older `build_and_push.sh` used GNU timeout | Fixed on main - current version does not use timeout |
 
 ### Reading CloudWatch logs
 
@@ -378,17 +384,17 @@ Key events to search for:
 
 ### Rolling back a bad image
 
-Every image push creates a `:git-<sha>` tag alongside `:latest`:
+Every build creates an immutable `sha-<short>` tag.
+Pin a known-good tag by updating `image_tag` in `terraform.tfvars` and re-applying:
 
 ```bash
-# Check available tags
-aws ecr list-images --repository-name bridge-classifier --profile <profile>
-
-# Roll back to a known-good image
-docker pull <ecr-url>:git-abc1234
-docker tag <ecr-url>:git-abc1234 <ecr-url>:latest
-docker push <ecr-url>:latest
+# Set image_tag = "sha-abc1234" in terraform.tfvars
+cd infra/terraform/app
+terraform plan && terraform apply
 ```
+
+To list available GHCR tags, check the repository's Packages page on GitHub.
+For ECR, use `aws ecr list-images --repository-name bridge-classifier --profile <profile>`.
 
 ---
 

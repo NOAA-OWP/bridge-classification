@@ -1,0 +1,14 @@
+name: bridge-classify
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11.*
+  - numpy=1.26.*
+  - python-pdal
+  - boto3
+  - awscli
+  - pip
+  - pip:
+    - --extra-index-url https://download.pytorch.org/whl/cu126
+    - torch==2.10.0+cu126
+    - spconv-cu120==2.3.6

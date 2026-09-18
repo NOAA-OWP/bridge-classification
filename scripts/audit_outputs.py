@@ -6,6 +6,8 @@ Optionally writes missing entries to a new manifest for re-submission.
 
 Uses a thread pool for parallel S3 head_object checks.
 
+--profile: S3 data access. Falls back to AWS_PROFILE if not set.
+
 Usage:
     # Check all outputs exist
     python scripts/audit_outputs.py \
@@ -25,8 +27,8 @@ Usage:
     # Tune concurrency (default: 200)
     python scripts/audit_outputs.py ... --workers 100
 
-    # Use a specific AWS profile
-    python scripts/audit_outputs.py ... --profile Data
+    # Use a specific AWS profile for S3 access
+    python scripts/audit_outputs.py ... --profile my-profile
 
     # Save audit results to S3
     python scripts/audit_outputs.py \
@@ -45,10 +47,10 @@ from datetime import datetime, timezone
 # Add project root to path so we can import from src/
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from src.constants import InferenceMode
-from src.s3_audit import audit_s3_outputs
+from src.s3_audit import DEFAULT_AUDIT_WORKERS, audit_s3_outputs
 from src.s3_client import create_s3_client, stream_manifest_lines, upload_json
 
-DEFAULT_WORKERS = 200
+MAX_MISSING_ENTRIES = 1000
 
 
 def main() -> None:
@@ -60,17 +62,23 @@ def main() -> None:
     parser.add_argument('--mode', type=InferenceMode, default=InferenceMode.MASKED,
                         help='Inference mode: masked (default), raw, or both')
     parser.add_argument('--write-missing', type=str, help='Write missing manifest lines to this file')
-    parser.add_argument('--workers', type=int, default=DEFAULT_WORKERS,
-                        help=f'Parallel S3 check workers (default: {DEFAULT_WORKERS})')
+    parser.add_argument('--workers', type=int, default=DEFAULT_AUDIT_WORKERS,
+                        help=f'Parallel S3 check workers (default: {DEFAULT_AUDIT_WORKERS})')
     parser.add_argument('--profile', type=str, help='AWS profile')
     parser.add_argument('--save-to-s3', action='store_true',
                         help='Upload audit summary JSON to S3 at {output-prefix}/_audit_results.json')
     args = parser.parse_args()
 
+    if args.workers < 1:
+        parser.error("--workers must be >= 1")
+
     s3_main = create_s3_client(args.profile)
 
     lines = list(stream_manifest_lines(s3_main, args.manifest))
     total = len(lines)
+    if total == 0:
+        print("ERROR: manifest is empty")
+        sys.exit(1)
     print(f"Manifest: {total} entries")
     print(f"Checking outputs in s3://{args.bucket}/{args.output_prefix}/ "
           f"(mode={args.mode}, workers={args.workers})")
@@ -89,12 +97,15 @@ def main() -> None:
     missing = len(missing_lines)
     print(f"\nResults: {found} found, {missing} missing out of {total} total")
 
-    if args.write_missing and missing_lines:
-        with open(args.write_missing, 'w') as f:
-            for line in missing_lines:
-                f.write(line + '\n')
-        print(f"Missing manifest written to: {args.write_missing}")
-        print(f"Re-submit with: python scripts/submit_batch_job.py --manifest <upload-this-file>")
+    if args.write_missing:
+        if missing_lines:
+            with open(args.write_missing, 'w') as f:
+                for line in missing_lines:
+                    f.write(line + '\n')
+            print(f"Missing manifest written to: {args.write_missing}")
+            print(f"Re-submit with: python scripts/submit_batch_job.py --manifest <upload-this-file>")
+        else:
+            print("No missing entries to write.")
 
     if args.save_to_s3:
         audit_result = {
@@ -105,8 +116,8 @@ def main() -> None:
             'missing': missing,
         }
         if missing_lines:
-            audit_result['missing_entries'] = missing_lines[:1000]
-            if len(missing_lines) > 1000:
+            audit_result['missing_entries'] = missing_lines[:MAX_MISSING_ENTRIES]
+            if len(missing_lines) > MAX_MISSING_ENTRIES:
                 audit_result['missing_entries_truncated'] = True
 
         audit_key = f"{args.output_prefix}/_audit_results.json"

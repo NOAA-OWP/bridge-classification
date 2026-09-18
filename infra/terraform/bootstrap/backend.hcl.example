@@ -1,0 +1,9 @@
+# Copy to backend.hcl and fill in. backend.hcl is git-ignored.
+# Only needed if using the bootstrap layer (see README for skip-bootstrap path).
+# bucket must match the name main.tf creates: <project_name>-terraform-state-<account_id>
+bucket              = "bridge-classifier-terraform-state-<ACCOUNT_ID>"
+key                 = "bootstrap/terraform.tfstate"
+region              = "us-east-1"
+use_lockfile        = true             # S3-native state locking (Terraform >= 1.10)
+encrypt             = true             # encrypt the state object at rest
+allowed_account_ids = ["<ACCOUNT_ID>"] # backend-level guard: refuse init/state ops in the wrong account

@@ -18,6 +18,7 @@ Optional env vars:
 """
 
 import os
+import shutil
 import signal
 import sys
 import time
@@ -39,6 +40,10 @@ from src.s3_client import (
 )
 from src.s3_paths import resolve_input_key, resolve_output_keys
 
+DEFAULT_BRIDGE_TIMEOUT = 150
+DEFAULT_VOXEL_SIZE = 0.1
+WORK_DIR = Path('/tmp/batch')
+
 
 def log(msg: str, child_index: Optional[int] = None, bridge_id: Optional[str] = None) -> None:
     """Structured log line for logging to CloudWatch."""
@@ -53,8 +58,8 @@ def parse_config() -> Dict[str, Any]:
     required = ['S3_BUCKET', 'S3_INPUT_PREFIX', 'S3_MANIFEST_URI', 'S3_MODEL_URI', 'S3_OUTPUT_PREFIX']
     missing = [v for v in required if not os.environ.get(v)]
     if missing:
-        print(f"ERROR: required environment variables not set: {' '.join(missing)}", flush=True)
-        print("These should be set in the Batch job definition (managed by Terraform).", flush=True)
+        print(f"ERROR: Missing env vars: {' '.join(missing)}", flush=True)
+        print("These must be set in the Batch job definition (managed by Terraform).", flush=True)
         sys.exit(1)
 
     return {
@@ -66,7 +71,7 @@ def parse_config() -> Dict[str, Any]:
         'job_index': int(os.environ.get('AWS_BATCH_JOB_ARRAY_INDEX', '0')),
         'array_size': int(os.environ.get('ARRAY_SIZE', '1')),
         'inference_mode': InferenceMode(os.environ.get('INFERENCE_MODE', 'masked')),
-        'bridge_timeout': float(os.environ.get('BRIDGE_TIMEOUT', '150')),
+        'bridge_timeout': float(os.environ.get('BRIDGE_TIMEOUT', str(DEFAULT_BRIDGE_TIMEOUT))),
     }
 
 
@@ -105,12 +110,12 @@ def main() -> None:
     def sigterm_handler(signum, frame):
         nonlocal shutdown_requested
         shutdown_requested = True
-        log("SIGTERM received — finishing current bridge then exiting", child_index=idx)
+        log("SIGTERM received - finishing current bridge then exiting", child_index=idx)
 
     signal.signal(signal.SIGTERM, sigterm_handler)
 
     # --- Work directories ---
-    work_dir = Path('/tmp/batch')
+    work_dir = WORK_DIR
     input_dir = work_dir / 'inputs'
     output_dir = work_dir / 'outputs'
     input_dir.mkdir(parents=True, exist_ok=True)
@@ -132,9 +137,18 @@ def main() -> None:
         all_lines = [line.strip() for line in f if line.strip()]
 
     total_lines = len(all_lines)
+    if total_lines == 0:
+        log("ERROR: manifest is empty", child_index=idx)
+        sys.exit(1)
+
     start, end = compute_chunk(idx, cfg['array_size'], total_lines)
     chunk_lines = all_lines[start:end]
     chunk_size = len(chunk_lines)
+
+    if chunk_size == 0:
+        log(f"WARNING: empty chunk (index {idx} >= {total_lines} manifest lines), nothing to process",
+            child_index=idx)
+        sys.exit(0)
 
     huc_ids = sorted(set(line.split('/')[0] for line in chunk_lines))
     log(f"Processing lines {start+1}-{end} of {total_lines} "
@@ -219,7 +233,7 @@ def main() -> None:
             child_index=idx, bridge_id=bridge_id)
         try:
             with bridge_timeout_guard(bridge_timeout):
-                ok = run_inference(model, local_input, local_output, voxel_size=0.1,
+                ok = run_inference(model, local_input, local_output, voxel_size=DEFAULT_VOXEL_SIZE,
                                    device=device, mode=mode)
         except BridgeTimeout:
             log(f"INFER_FAILED reason=timeout bridge_timeout={bridge_timeout}s huc={huc_id} manifest_line={global_line}",
@@ -279,8 +293,6 @@ def main() -> None:
         f"wall_clock_seconds={job_seconds:.0f} wall_clock_hours={job_hours:.4f}",
         child_index=idx)
 
-    # Cleanup work directory
-    import shutil
     shutil.rmtree(work_dir, ignore_errors=True)
 
     # Exit non-zero if any failures so Batch marks this child as failed

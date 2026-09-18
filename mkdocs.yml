@@ -2,26 +2,47 @@ site_name: Bridge Classification
 site_description: USGS LiDAR Bridge Point Cloud Classification Pipeline
 repo_url: https://github.com/NGWPC/bridge-classification
 repo_name: NGWPC/bridge-classification
+edit_uri: edit/main/docs/
+
+extra:
+  version:
+    provider: mike
 
 theme:
   name: material
   features:
+    - navigation.tabs
     - navigation.sections
+    - navigation.indexes
     - navigation.expand
     - navigation.top
     - search.highlight
+    - search.suggest
+    - content.action.edit
     - content.code.copy
+    - content.tooltips
   palette:
     - scheme: default
       primary: indigo
       accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
 
 nav:
   - Home: index.md
-  - Architecture: architecture.md
-  - Data Pipeline: data-pipeline.md
-  - AWS Batch Inference: aws-batch-inference.md
-  - Deployment Runbook: deployment-runbook.md
+  - Guide:
+    - Architecture: architecture.md
+    - Data Pipeline: data-pipeline.md
+    - AWS Batch Inference: aws-batch-inference.md
+    - Deployment Runbook: deployment-runbook.md
+    - Design Decisions: decisions.md
   - API Reference:
     - api/index.md
     - Core & Constants: api/core.md
@@ -34,7 +55,6 @@ nav:
     - Dataset Overview: notebooks/dataset_overview.ipynb
     - RANSAC Deck Planes: notebooks/ransac_deck_planes.ipynb
     - Training Plots: notebooks/training_plots.ipynb
-  - Design Decisions: decisions.md
 
 plugins:
   - search
@@ -66,8 +86,13 @@ markdown_extensions:
   - pymdownx.inlinehilite
   - pymdownx.tabbed:
       alternate_style: true
+  - pymdownx.snippets
+  - pymdownx.tasklist:
+      custom_checkbox: true
   - tables
   - admonition
   - pymdownx.details
+  - attr_list
+  - md_in_html
   - toc:
       permalink: true

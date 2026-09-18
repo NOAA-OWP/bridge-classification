@@ -17,8 +17,10 @@ experiments/
 .cursor/
 
 # Infrastructure and planning (not needed in container)
-terraform/
+infra/
 plan/
+tests/
+notebooks/
 
 # Python and conda cache
 __pycache__/
@@ -40,6 +42,7 @@ dist/
 *.egg
 
 # Docs and misc
+docs/
 *.md
 !README.md
 .DS_Store

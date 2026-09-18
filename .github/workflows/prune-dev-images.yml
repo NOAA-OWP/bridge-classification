@@ -1,0 +1,55 @@
+name: Prune Dev Images
+
+on:
+  schedule:
+    # Runs at 03:00 UTC, only on Monday
+    - cron: "0 3 * * 1"
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: "Log what would be deleted without deleting anything"
+        type: boolean
+        default: true
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  prune:
+    name: Prune inference
+    runs-on: ubuntu-latest
+
+    permissions:
+      packages: write
+
+    steps:
+      - name: Prune old sha- images
+        uses: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          owner: ${{ github.repository_owner }}
+          package: ${{ github.event.repository.name }}/inference
+
+          # Only touch images older than two weeks.
+          older-than: 2 weeks
+
+          # Always keep the newest tagged image even if it's older than
+          # two weeks. Prevents removing the last build if main is quiet.
+          keep-n-tagged: 1
+
+          # Reap dangling manifests orphaned each time the dev tag moves.
+          delete-untagged: true
+
+          # Protected tags. sha-<short-sha> carries no dots so it stays
+          # eligible for pruning.
+          exclude-tags: dev,latest,*.*.*,*.*,v*
+
+          # Verify no multi-arch image was left without platform children.
+          validate: true
+
+          # Scheduled runs delete for real. Manual runs default to dry run
+          # so the filters can be eyeballed before anything is destroyed.
+          dry-run: ${{ inputs.dry-run || false }}

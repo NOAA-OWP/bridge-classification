@@ -9,12 +9,14 @@ checkpoints/
 experiments/
 plan/
 
-# Terraform
-terraform/.terraform/
-terraform/*.tfstate
-terraform/*.tfstate.*
-terraform/.terraform.lock.hcl
-terraform/terraform.tfvars
+# Terraform — covers terraform/ (legacy) and infra/terraform/ (layered)
+# State + provider cache: never commit (state can contain sensitive values)
+*.tfstate
+*.tfstate.*
+.terraform/
+# Per-account config: copy from the *.example files
+terraform.tfvars
+backend.hcl
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
