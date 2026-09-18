@@ -1,0 +1,2193 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="USGS LiDAR Bridge Point Cloud Classification Pipeline">
+      
+      
+      
+      
+        <link rel="prev" href="../data-pipeline/">
+      
+      
+        <link rel="next" href="../deployment-runbook/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>AWS Batch Inference - Bridge Classification</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#aws-batch-inference" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Bridge Classification" class="md-header__button md-logo" aria-label="Bridge Classification" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Bridge Classification
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              AWS Batch Inference
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/NOAA-OWP/bridge-classification" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    NOAA-OWP/bridge-classification
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../architecture/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../api/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  API Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../notebooks/dataset_overview/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Notebooks
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Bridge Classification" class="md-nav__button md-logo" aria-label="Bridge Classification" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Bridge Classification
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/NOAA-OWP/bridge-classification" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    NOAA-OWP/bridge-classification
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data-pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Pipeline
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AWS Batch Inference
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AWS Batch Inference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#prerequisites" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prerequisites
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#aws-profile-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AWS Profile Configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quick-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Start
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Quick Start">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-configure-deploy-infrastructure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Configure &amp; Deploy Infrastructure
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-build-and-push-docker-image" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Build and Push Docker Image
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-submit-a-job" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Submit a Job
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-monitor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Monitor
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-audit-outputs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Audit Outputs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-post-run-report" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Post-Run Report
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#7-cleanup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Cleanup
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-chunking-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How Chunking Works
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#spot-instance-handling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SPOT Instance Handling
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="SPOT Instance Handling">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-sigterm-handler-batch_entrypointpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. SIGTERM Handler (batch_entrypoint.py)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-retry-strategy-terraform" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Retry Strategy (Terraform)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-skip-if-exists-resumability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Skip-if-Exists (Resumability)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#inference-modes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inference Modes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#manifest-file-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Manifest File Format
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration Reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#local-inference-testing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Local Inference &amp; Testing
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Local Inference &amp; Testing">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#direct-inference-no-s3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Direct Inference (no S3)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#testing-batch-entrypoint-locally" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testing Batch Entrypoint Locally
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cost-tracking" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cost Tracking
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deployment-runbook/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment Runbook
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../decisions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design Decisions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../api/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/core/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Core & Constants
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/data-io/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data I/O & Processing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/weak-supervision/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Weak Supervision
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/model-training/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Model & Training
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/inference-cloud/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Inference & Cloud
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/utils/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Utility Scripts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Notebooks
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Notebooks
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../notebooks/dataset_overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dataset Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../notebooks/ransac_deck_planes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    RANSAC deck plane visualization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../notebooks/training_plots/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Training Plots
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#prerequisites" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prerequisites
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#aws-profile-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AWS Profile Configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quick-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Start
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Quick Start">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-configure-deploy-infrastructure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Configure &amp; Deploy Infrastructure
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-build-and-push-docker-image" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Build and Push Docker Image
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-submit-a-job" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Submit a Job
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-monitor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Monitor
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-audit-outputs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Audit Outputs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-post-run-report" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Post-Run Report
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#7-cleanup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Cleanup
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-chunking-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How Chunking Works
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#spot-instance-handling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SPOT Instance Handling
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="SPOT Instance Handling">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-sigterm-handler-batch_entrypointpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. SIGTERM Handler (batch_entrypoint.py)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-retry-strategy-terraform" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Retry Strategy (Terraform)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-skip-if-exists-resumability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Skip-if-Exists (Resumability)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#inference-modes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inference Modes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#manifest-file-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Manifest File Format
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration Reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#local-inference-testing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Local Inference &amp; Testing
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Local Inference &amp; Testing">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#direct-inference-no-s3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Direct Inference (no S3)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#testing-batch-entrypoint-locally" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testing Batch Entrypoint Locally
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cost-tracking" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cost Tracking
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/NOAA-OWP/bridge-classification/edit/main/docs/aws-batch-inference.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="aws-batch-inference">AWS Batch Inference<a class="headerlink" href="#aws-batch-inference" title="Permanent link">&para;</a></h1>
+<p>Scale inference to hundreds of thousands of bridges in parallel using AWS Batch array jobs with SPOT instance support. Infrastructure is managed with Terraform; job submission, entrypoint, and post-run audit are Python scripts.</p>
+<p>Each array child downloads the manifest and model, computes its chunk, then processes bridges one at a time: download → infer → upload → cleanup. Per-bridge upload with skip-if-exists makes SPOT interruption cheap (loses at most 1 in-progress bridge).</p>
+<p><strong>Key files</strong>:</p>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>infra/terraform/bootstrap/</code></td>
+<td>S3 bucket for Terraform remote state (once per account)</td>
+</tr>
+<tr>
+<td><code>infra/terraform/foundation/</code></td>
+<td>Networking (VPC, subnets - optional, skip if using existing VPC)</td>
+</tr>
+<tr>
+<td><code>infra/terraform/app/</code></td>
+<td>Workload: IAM, ECR (optional), compute env, queue, job definition</td>
+</tr>
+<tr>
+<td><code>infra/terraform/app/terraform.tfvars</code></td>
+<td>All configurable values - gitignored; copy from <code>.tfvars.example</code></td>
+</tr>
+<tr>
+<td><code>infra/terraform/app/terraform.tfvars.example</code></td>
+<td>Template with placeholder values for new setups</td>
+</tr>
+<tr>
+<td><code>.github/workflows/build-dev-images.yml</code></td>
+<td>Build and publish image to GHCR (automatic on push to main)</td>
+</tr>
+<tr>
+<td><code>scripts/build_and_push.sh</code></td>
+<td>Build Docker image and push to ECR (manual, when <code>create_ecr = true</code>)</td>
+</tr>
+<tr>
+<td><code>scripts/submit_batch_job.py</code></td>
+<td>Submit single or array batch jobs</td>
+</tr>
+<tr>
+<td><code>scripts/batch_entrypoint.py</code></td>
+<td>Container entrypoint - per-bridge processing loop</td>
+</tr>
+<tr>
+<td><code>scripts/audit_outputs.py</code></td>
+<td>Post-run verification - checks all expected outputs exist in S3</td>
+</tr>
+<tr>
+<td><code>scripts/post_run_report.py</code></td>
+<td>Post-run report - audit + CloudWatch aggregation + <code>_run_report.json</code></td>
+</tr>
+<tr>
+<td><code>src/s3_client.py</code></td>
+<td>Generic S3 utilities (parse URIs, download/upload)</td>
+</tr>
+<tr>
+<td><code>src/s3_paths.py</code></td>
+<td>Bridge-specific S3 path resolution (manifest → S3 keys)</td>
+</tr>
+<tr>
+<td><code>src/s3_audit.py</code></td>
+<td>Thread-pool S3 output auditor (used by audit_outputs and post_run_report)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
+<pre class="mermaid"><code>flowchart LR
+  subgraph S3
+    M[Manifest file&lt;br/&gt;split_test_ids.txt]
+    CK[Model checkpoint&lt;br/&gt;.ckpt]
+    IN[Source LAS/LAZ files&lt;br/&gt;per bridge]
+    OUT[Classified output&lt;br/&gt;_bridge_masked / _predicted]
+  end
+
+  subgraph Batch["AWS Batch Array Job"]
+    B0[Child 0&lt;br/&gt;bridges 1–150]
+    B1[Child 1&lt;br/&gt;bridges 151–300]
+    BN[Child N-1&lt;br/&gt;bridges ...]
+  end
+
+  M --&gt; Batch
+  CK --&gt; Batch
+  IN --&gt; Batch
+  Batch --&gt; OUT</code></pre>
+<p>Each child processes bridges <strong>one at a time</strong> in a loop:</p>
+<ol>
+<li>Downloads the full manifest and model from S3</li>
+<li>Computes its chunk of manifest lines based on <code>AWS_BATCH_JOB_ARRAY_INDEX</code> and <code>ARRAY_SIZE</code></li>
+<li>For each bridge in its chunk:</li>
+<li><strong>Skip</strong> if output already exists in S3 (resumability)</li>
+<li><strong>Download</strong> input LAS/LAZ from S3</li>
+<li><strong>Infer</strong> using <code>run_inference()</code> (model loaded once, reused for all bridges)</li>
+<li><strong>Upload</strong> output immediately to S3</li>
+<li><strong>Cleanup</strong> local files (O(1 bridge) disk usage, not O(chunk))</li>
+</ol>
+<hr />
+<h2 id="prerequisites">Prerequisites<a class="headerlink" href="#prerequisites" title="Permanent link">&para;</a></h2>
+<ul>
+<li>AWS account with IAM permissions for Batch and S3 (ECR permissions also needed when <code>create_ecr = true</code>)</li>
+<li><a href="https://developer.hashicorp.com/terraform/install">Terraform</a> installed</li>
+<li>Docker installed (for building inference images)</li>
+<li>Python environment for management scripts (job submission, audit, reporting):</li>
+<li><strong>Option A</strong>: <code>conda env create -f environment-data.yaml &amp;&amp; conda activate bridge-classify-data</code> (Linux only - contains platform-specific packages)</li>
+<li><strong>Option B</strong>: <code>pip install boto3</code> (minimal, cross-platform - sufficient for submit/audit/report)</li>
+<li>Trained model checkpoint uploaded to S3</li>
+<li>A manifest file listing bridges to process (one per line) - see <a href="#manifest-file-format">Manifest File Format</a>. Generated by <code>utils/split_data.py</code> (<code>split_test_ids.txt</code>) or <code>utils/prepare_run.py</code> for custom runs.</li>
+</ul>
+<p><strong>Which environment for what:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Task</th>
+<th>Environment</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Training / inference (GPU)</td>
+<td>Docker (recommended) or <code>environment.yaml</code></td>
+</tr>
+<tr>
+<td>Data processing (CPU)</td>
+<td><code>environment-data.yaml</code></td>
+</tr>
+<tr>
+<td>Job submission, audit, reporting</td>
+<td><code>environment-data.yaml</code> or <code>pip install boto3</code></td>
+</tr>
+<tr>
+<td>Tests</td>
+<td><code>pip install -r requirements-test.txt</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="aws-profile-configuration">AWS Profile Configuration<a class="headerlink" href="#aws-profile-configuration" title="Permanent link">&para;</a></h2>
+<p>All scripts use <code>AWS_PROFILE</code> as the primary credential source. Set it to the account where infrastructure was deployed (Batch, CloudWatch):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">AWS_PROFILE</span><span class="o">=</span>my-profile
+</code></pre></div>
+<p><strong>Single account</strong> (infra and data in the same account) - this is all you need. Every script falls back to <code>AWS_PROFILE</code> for all AWS access.</p>
+<p><strong>Cross-account</strong> (S3 data in a different account than Batch infra) - pass <code>--profile</code> to specify the S3 data profile. <code>AWS_PROFILE</code> still controls Batch/CloudWatch access:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># Submit: Batch uses AWS_PROFILE, manifest is read via --profile</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>python<span class="w"> </span>scripts/submit_batch_job.py<span class="w"> </span>--manifest<span class="w"> </span>s3://my-bucket/path/manifest.txt<span class="w"> </span>--profile<span class="w"> </span>data-account
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="c1"># Report: S3 audit via --profile, CloudWatch via --batch-profile</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>python<span class="w"> </span>scripts/post_run_report.py<span class="w"> </span>--bucket<span class="w"> </span>my-bucket<span class="w"> </span>--output-prefix<span class="w"> </span>my-output-prefix<span class="w"> </span>--profile<span class="w"> </span>data-account<span class="w"> </span>--batch-profile<span class="w"> </span>infra-account
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Script</th>
+<th><code>AWS_PROFILE</code></th>
+<th><code>--profile</code></th>
+<th><code>--batch-profile</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>build_and_push.sh</code></td>
+<td>ECR login + push (when using ECR)</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr>
+<td><code>submit_batch_job.py</code></td>
+<td>Batch job submission</td>
+<td>S3 manifest access (optional)</td>
+<td>-</td>
+</tr>
+<tr>
+<td><code>audit_outputs.py</code></td>
+<td>-</td>
+<td>S3 output checks</td>
+<td>-</td>
+</tr>
+<tr>
+<td><code>post_run_report.py</code></td>
+<td>-</td>
+<td>S3 audit</td>
+<td>Batch/CloudWatch queries (optional)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="quick-start">Quick Start<a class="headerlink" href="#quick-start" title="Permanent link">&para;</a></h2>
+<h3 id="1-configure-deploy-infrastructure">1. Configure &amp; Deploy Infrastructure<a class="headerlink" href="#1-configure-deploy-infrastructure" title="Permanent link">&para;</a></h3>
+<p>Follow <a href="../terraform-reference/"><code>infra/terraform/README.md</code></a> to deploy infrastructure. Only the app layer is required; bootstrap and foundation are optional (see Terraform README for when to use each). Each layer has a <code>backend.hcl.example</code> and <code>terraform.tfvars.example</code> - copy both and fill in your values. For day-to-day config changes (S3 paths, model URI, instance types), only the app layer needs re-applying:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nb">cd</span><span class="w"> </span>infra/terraform/app<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>terraform<span class="w"> </span>plan<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>terraform<span class="w"> </span>apply
+</code></pre></div>
+<p>See <a href="#configuration-reference">Configuration Reference</a> for all app-layer variables.</p>
+<h3 id="2-build-and-push-docker-image">2. Build and Push Docker Image<a class="headerlink" href="#2-build-and-push-docker-image" title="Permanent link">&para;</a></h3>
+<p><strong>GHCR (default):</strong> images are published automatically on push to main by the <code>build-dev-images</code> GitHub Actions workflow.
+Tags: <code>sha-&lt;short&gt;</code> (immutable) + <code>dev</code> (floating).
+No manual steps needed.</p>
+<p><strong>ECR (manual, when <code>create_ecr = true</code>):</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">AWS_PROFILE</span><span class="o">=</span>my-profile
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">AWS_REGION</span><span class="o">=</span>us-east-1
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>chmod<span class="w"> </span>+x<span class="w"> </span>./scripts/build_and_push.sh
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>./scripts/build_and_push.sh
+</code></pre></div>
+<p>Only needed when you change code (<code>src/</code>, <code>scripts/</code>, or <code>Dockerfile</code>).
+Changing S3 paths or inference config in <code>infra/terraform/app/terraform.tfvars</code> does <strong>not</strong> require a rebuild - those are environment variables in the job definition.</p>
+<h3 id="3-submit-a-job">3. Submit a Job<a class="headerlink" href="#3-submit-a-job" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># Dry run (preview without submitting)</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>python<span class="w"> </span>scripts/submit_batch_job.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">    </span>--manifest<span class="w"> </span>s3://my-bucket/bridge-classification/ml-data/split_test_ids.txt<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">    </span>--dry-run
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="c1"># Submit array job from S3 manifest</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>python<span class="w"> </span>scripts/submit_batch_job.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="w">    </span>--manifest<span class="w"> </span>s3://my-bucket/bridge-classification/ml-data/split_test_ids.txt
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="c1"># Override inference mode and timeout for one run</span>
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>python<span class="w"> </span>scripts/submit_batch_job.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="w">    </span>--manifest<span class="w"> </span>s3://my-bucket/bridge-classification/ml-data/split_test_ids.txt<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="w">    </span>--env<span class="w"> </span><span class="nv">INFERENCE_MODE</span><span class="o">=</span>both<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a><span class="w">    </span>--env<span class="w"> </span><span class="nv">BRIDGE_TIMEOUT</span><span class="o">=</span><span class="m">300</span>
+</code></pre></div>
+<p>The <code>--profile</code> flag controls which AWS profile is used to read the manifest from S3 (for line counting).</p>
+<p>Run tracking (<code>_run_config.json</code>) is saved automatically - <code>s3_bucket</code> and <code>s3_output_prefix</code> are read from terraform outputs. Override via <code>--env S3_BUCKET=...</code> and <code>--env S3_OUTPUT_PREFIX=...</code> for a different output path.</p>
+<h3 id="4-monitor">4. Monitor<a class="headerlink" href="#4-monitor" title="Permanent link">&para;</a></h3>
+<p>The submit script prints a link to the Batch console. Logs are written to CloudWatch log group <code>/aws/batch/bridge-classifier</code> with structured fields for querying.</p>
+<p><strong>Log format:</strong> <code>[Child {idx}] [bridge={bridge_id}] EVENT key=value ...</code></p>
+<p>Example log lines:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>[Child 42] [bridge=bridge_10598181] INFER_START (5/150) mode=masked huc=02050206 manifest_line=6305
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>[Child 42] [bridge=bridge_10598181] INFER_OK bridge_seconds=87.3s (5/150) huc=02050206
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>[Child 42] [bridge=bridge_5069009] SKIP_EXISTS (6/150) manifest_line=6306 huc=03070101
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>[Child 42] [bridge=bridge_9921003] INFER_FAILED reason=timeout bridge_timeout=150s huc=02050206 manifest_line=6307
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>[Child 42] [bridge=bridge_1234567] INFER_FAILED reason=inference_error huc=02050206 manifest_line=6308
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>[Child 42] [bridge=bridge_8888888] SKIP_SMALL_FILE points&lt;100 huc=03070101 manifest_line=6309
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>[Child 42] SUMMARY succeeded=138 failed=3 skipped_exists=5 skipped_too_few_points=2 download_failed=2 total=150 wall_clock_seconds=14400 wall_clock_hours=4.0000
+</code></pre></div>
+<p><strong>CloudWatch Insights queries:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a># Failures by reason (timeout vs inference_error vs other)
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>fields @timestamp, @message
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>| filter @message like /INFER_FAILED/
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>| parse @message "reason=* " as reason
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>| stats count() by reason
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a># Average bridge processing time per child
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>fields @timestamp, @message
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>| filter @message like /INFER_OK/
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>| parse @message "bridge_seconds=*s" as seconds
+<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a>| stats avg(seconds), max(seconds), count() by @logStream
+<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a>
+<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a># Summary across all children
+<a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a>fields @timestamp, @message
+<a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a>| filter @message like /SUMMARY/
+<a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a>| parse @message "succeeded=* failed=* skipped_exists=* skipped_too_few_points=* download_failed=*" as ok, fail, skip_exists, skip_few_pts, dl_fail
+<a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a>| stats sum(ok) as total_ok, sum(fail) as total_fail, sum(skip_exists) as total_skip_exists, sum(skip_few_pts) as total_skip_too_few_points, sum(dl_fail) as total_dl_fail
+<a id="__codelineno-6-18" name="__codelineno-6-18" href="#__codelineno-6-18"></a>
+<a id="__codelineno-6-19" name="__codelineno-6-19" href="#__codelineno-6-19"></a># Find OOM errors
+<a id="__codelineno-6-20" name="__codelineno-6-20" href="#__codelineno-6-20"></a>fields @timestamp, @message
+<a id="__codelineno-6-21" name="__codelineno-6-21" href="#__codelineno-6-21"></a>| filter @message like /CUDA out of memory/ or @message like /OutOfMemoryError/
+<a id="__codelineno-6-22" name="__codelineno-6-22" href="#__codelineno-6-22"></a>| sort @timestamp desc
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># Tail logs in terminal</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>aws<span class="w"> </span>logs<span class="w"> </span>tail<span class="w"> </span>/aws/batch/bridge-classifier<span class="w"> </span>--follow<span class="w"> </span>--profile<span class="w"> </span>my-profile
+</code></pre></div>
+<h3 id="5-audit-outputs">5. Audit Outputs<a class="headerlink" href="#5-audit-outputs" title="Permanent link">&para;</a></h3>
+<p>After all children complete, verify that every expected output exists in S3:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># Check all outputs exist</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>python<span class="w"> </span>scripts/audit_outputs.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">    </span>--manifest<span class="w"> </span>s3://my-bucket/bridge-classification/ml-data/split_test_ids.txt<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">    </span>--bucket<span class="w"> </span>my-bucket<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="w">    </span>--input-prefix<span class="w"> </span>bridge-classification/ml-data/source<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="w">    </span>--output-prefix<span class="w"> </span>scratch/myfolder/bridge-classification-test/predictions<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="w">    </span>--mode<span class="w"> </span>masked<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="w">    </span>--profile<span class="w"> </span>my-profile
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a>
+<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="c1"># Write missing entries to a file for re-submission</span>
+<a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a>python<span class="w"> </span>scripts/audit_outputs.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a><span class="w">    </span>--manifest<span class="w"> </span>s3://my-bucket/bridge-classification/ml-data/split_test_ids.txt<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a><span class="w">    </span>--bucket<span class="w"> </span>my-bucket<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a><span class="w">    </span>--input-prefix<span class="w"> </span>bridge-classification/ml-data/source<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-15" name="__codelineno-8-15" href="#__codelineno-8-15"></a><span class="w">    </span>--output-prefix<span class="w"> </span>scratch/myfolder/bridge-classification-test/predictions<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-16" name="__codelineno-8-16" href="#__codelineno-8-16"></a><span class="w">    </span>--mode<span class="w"> </span>masked<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-17" name="__codelineno-8-17" href="#__codelineno-8-17"></a><span class="w">    </span>--write-missing<span class="w"> </span>missing.txt<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-18" name="__codelineno-8-18" href="#__codelineno-8-18"></a><span class="w">    </span>--profile<span class="w"> </span>my-profile
+<a id="__codelineno-8-19" name="__codelineno-8-19" href="#__codelineno-8-19"></a>
+<a id="__codelineno-8-20" name="__codelineno-8-20" href="#__codelineno-8-20"></a><span class="c1"># Tune concurrency (default: 200 threads)</span>
+<a id="__codelineno-8-21" name="__codelineno-8-21" href="#__codelineno-8-21"></a>python<span class="w"> </span>scripts/audit_outputs.py<span class="w"> </span>--manifest<span class="w"> </span>s3://my-bucket/path/manifest.txt<span class="w"> </span>--bucket<span class="w"> </span>my-bucket<span class="w"> </span>--output-prefix<span class="w"> </span>my-prefix<span class="w"> </span>--workers<span class="w"> </span><span class="m">100</span>
+</code></pre></div>
+<p>If outputs are missing, upload the missing manifest and re-submit:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>aws<span class="w"> </span>s3<span class="w"> </span>cp<span class="w"> </span>missing.txt<span class="w"> </span>s3://my-bucket/bridge-classification/missing_manifest.txt<span class="w"> </span>--profile<span class="w"> </span>my-profile
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>python<span class="w"> </span>scripts/submit_batch_job.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">    </span>--manifest<span class="w"> </span>s3://my-bucket/bridge-classification/missing_manifest.txt<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">    </span>--profile<span class="w"> </span>my-profile
+</code></pre></div>
+<p>Re-submission is safe - skip-if-exists means already-completed bridges are skipped.</p>
+<h3 id="6-post-run-report">6. Post-Run Report<a class="headerlink" href="#6-post-run-report" title="Permanent link">&para;</a></h3>
+<p>After all children complete, generate a report with audit results, CloudWatch aggregation, and per-bridge timing:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>python<span class="w"> </span>scripts/post_run_report.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="w">    </span>--bucket<span class="w"> </span>my-bucket<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="w">    </span>--output-prefix<span class="w"> </span>bridge-classification/runs/my-run/predictions<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="w">    </span>--mode<span class="w"> </span>masked<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="w">    </span>--profile<span class="w"> </span>my-profile<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="w">    </span>--batch-profile<span class="w"> </span>my-profile
+</code></pre></div>
+<p>Use <code>--batch-profile</code> when your S3 and Batch/CloudWatch credentials are on different AWS profiles.
+Do not include a trailing slash (/) on <code>--output-prefix</code>.</p>
+<p>This reads <code>_run_config.json</code> (saved at submission), audits S3 outputs, queries CloudWatch for SUMMARY and INFER_OK lines, queries failure reasons for missing bridges, and saves <code>_run_report.json</code> to the output prefix.</p>
+<p>Use <code>--skip-timing</code> for a faster report without per-bridge p50/p95 stats.</p>
+<h3 id="7-cleanup">7. Cleanup<a class="headerlink" href="#7-cleanup" title="Permanent link">&para;</a></h3>
+<p>To tear down Batch infrastructure, destroy layers in reverse order:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="nb">cd</span><span class="w"> </span>infra/terraform/app<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>terraform<span class="w"> </span>destroy<span class="w">        </span><span class="c1"># workload (IAM, ECR if created, Batch)</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="nb">cd</span><span class="w"> </span>../foundation<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>terraform<span class="w"> </span>destroy<span class="w">              </span><span class="c1"># networking (if deployed)</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="nb">cd</span><span class="w"> </span>../bootstrap<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>terraform<span class="w"> </span>destroy<span class="w">               </span><span class="c1"># state bucket (optional - safe to keep)</span>
+</code></pre></div>
+<p>Destroying <code>app</code> alone is usually sufficient (removes IAM, compute env, queue, job def, and ECR if <code>create_ecr = true</code>). Foundation and bootstrap are shared infrastructure rarely torn down. S3 data is not affected.</p>
+<hr />
+<h2 id="how-chunking-works">How Chunking Works<a class="headerlink" href="#how-chunking-works" title="Permanent link">&para;</a></h2>
+<p>The submit script computes how many array children to create:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="n">array_size</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">ceil</span><span class="p">(</span><span class="n">total</span> <span class="o">/</span> <span class="n">chunk_target</span><span class="p">),</span> <span class="mi">10_000</span><span class="p">)</span>  <span class="c1"># capped at AWS Batch limit</span>
+</code></pre></div>
+<ul>
+<li><code>chunk_target</code> defaults to 60 (files per container)</li>
+<li><code>array_size</code> is capped at 10,000 (AWS Batch hard limit)</li>
+</ul>
+<p>Each child computes its chunk at runtime from the actual manifest:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="n">chunk_size</span> <span class="o">=</span> <span class="n">ceil</span><span class="p">(</span><span class="n">total_lines</span> <span class="o">/</span> <span class="n">array_size</span><span class="p">)</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="n">start</span> <span class="o">=</span> <span class="n">job_index</span> <span class="o">*</span> <span class="n">chunk_size</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="n">end</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">start</span> <span class="o">+</span> <span class="n">chunk_size</span><span class="p">,</span> <span class="n">total_lines</span><span class="p">)</span>
+</code></pre></div>
+<p>Example with 1,500,000 bridges:</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>chunk_target</td>
+<td>60 (requested)</td>
+</tr>
+<tr>
+<td>array_size</td>
+<td>10,000 (capped from ideal 25,000)</td>
+</tr>
+<tr>
+<td>Files per child</td>
+<td>~150 (auto-adjusted)</td>
+</tr>
+</tbody>
+</table>
+<p>When capped, the submit script reports the actual chunk size per child.</p>
+<hr />
+<h2 id="spot-instance-handling">SPOT Instance Handling<a class="headerlink" href="#spot-instance-handling" title="Permanent link">&para;</a></h2>
+<p>Three layers of protection against SPOT interruption:</p>
+<h3 id="1-sigterm-handler-batch_entrypointpy">1. SIGTERM Handler (batch_entrypoint.py)<a class="headerlink" href="#1-sigterm-handler-batch_entrypointpy" title="Permanent link">&para;</a></h3>
+<p>When AWS reclaims a SPOT instance, it sends SIGTERM with ~2 minutes before SIGKILL. The handler sets <code>shutdown_requested = True</code>, and the loop finishes the current bridge's full cycle (inference + upload) before exiting. No half-uploaded files.</p>
+<h3 id="2-retry-strategy-terraform">2. Retry Strategy (Terraform)<a class="headerlink" href="#2-retry-strategy-terraform" title="Permanent link">&para;</a></h3>
+<p>The job definition includes <code>retry_strategy</code> that auto-retries on SPOT interruption (status reason <code>"Host EC2*"</code>) up to <code>retry_attempts</code> (default 3) times. Other failures (OOM, app errors) exit immediately - no wasted retries.</p>
+<h3 id="3-skip-if-exists-resumability">3. Skip-if-Exists (Resumability)<a class="headerlink" href="#3-skip-if-exists-resumability" title="Permanent link">&para;</a></h3>
+<p>When a retried child starts, it checks S3 for each bridge's output before processing. Bridges completed before the interruption are skipped. A retry only processes the remaining bridges.</p>
+<p><strong>Flow:</strong> SPOT reclaim → SIGTERM → finish current bridge → child exits → Batch auto-retries → retried child skips completed bridges → continues.</p>
+<hr />
+<h2 id="inference-modes">Inference Modes<a class="headerlink" href="#inference-modes" title="Permanent link">&para;</a></h2>
+<p>Set via <code>inference_mode</code> in terraform or <code>--env INFERENCE_MODE=...</code> at submit time.</p>
+<table>
+<thead>
+<tr>
+<th>Mode</th>
+<th>Output file(s)</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>masked</code> (default)</td>
+<td><code>{stem}_bridge_masked.laz</code></td>
+<td>Bridge deck only (model class 2 → ASPRS 17) overlaid on original classification</td>
+</tr>
+<tr>
+<td><code>raw</code></td>
+<td><code>{stem}_predicted.laz</code></td>
+<td>All model classes mapped to ASPRS codes (replaces original classification)</td>
+</tr>
+<tr>
+<td><code>both</code></td>
+<td><code>{stem}_predicted.laz</code> + <code>{stem}_bridge_masked.laz</code></td>
+<td>Both outputs per bridge</td>
+</tr>
+</tbody>
+</table>
+<p>Output files preserve the input extension (<code>.laz</code> or <code>.las</code>) and are organized by HUC:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>s3://{bucket}/{output_prefix}/{huc_id}/{stem}_bridge_masked.laz
+</code></pre></div>
+<hr />
+<h2 id="manifest-file-format">Manifest File Format<a class="headerlink" href="#manifest-file-format" title="Permanent link">&para;</a></h2>
+<p>One bridge per line. Extensionless or with extension:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>02050206/bridge_10598181_USGS_LPC_PA_South_Central_B2_2017_LAS_2019
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>03070101/bridge_5069009_USGS_LPC_PA_South_Central_B2_2017_LAS_2019.laz
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>11010009/bridge_1234567_USGS_Some_Dataset.las
+</code></pre></div>
+<p>If a line has no extension, the entrypoint probes S3 for <code>.laz</code> first, then <code>.las</code> via <code>head_object</code>.</p>
+<p>The split manifest produced by <code>utils/split_data.py</code> (<code>split_test_ids.txt</code>) is directly usable.</p>
+<hr />
+<h2 id="configuration-reference">Configuration Reference<a class="headerlink" href="#configuration-reference" title="Permanent link">&para;</a></h2>
+<p>See <a href="../terraform-reference/#app-variable-reference"><code>infra/terraform/README.md</code></a> for the full variable reference and <a href="../terraform-reference/#app-outputs">app outputs</a>.</p>
+<hr />
+<h2 id="local-inference-testing">Local Inference &amp; Testing<a class="headerlink" href="#local-inference-testing" title="Permanent link">&para;</a></h2>
+<h3 id="direct-inference-no-s3">Direct Inference (no S3)<a class="headerlink" href="#direct-inference-no-s3" title="Permanent link">&para;</a></h3>
+<p>Use <code>src/inference.py</code> to run inference on local files without any S3 or Batch setup.
+Requires an NVIDIA GPU (spconv-cu120).
+The model is loaded once and reused for all files.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>python<span class="w"> </span>src/inference.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="w">    </span>--model<span class="w"> </span>./experiments/bridge-base-all-data-v0/version_0/checkpoints/epoch<span class="o">=</span><span class="m">35</span>.ckpt<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="w">    </span>--input<span class="w"> </span>./data/ml-data/testing/02050206/bridge_10598181_USGS_LPC_PA_SouthCentral_B2_2017.laz<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="w">    </span>--output<span class="w"> </span>./data/ml-data/predictions/bridge_10598181_bridge_masked.laz<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a><span class="w">    </span>--mode<span class="w"> </span>masked
+</code></pre></div>
+<p>Modes: <code>masked</code> (default), <code>raw</code>, <code>both</code>. With <code>--mode both</code>, both <code>_predicted.laz</code> and <code>_bridge_masked.laz</code> are written. For batch processing, use <code>--pairs-file</code> with a tab-separated input/output file. Run <code>python src/inference.py --help</code> for all options.</p>
+<h3 id="testing-batch-entrypoint-locally">Testing Batch Entrypoint Locally<a class="headerlink" href="#testing-batch-entrypoint-locally" title="Permanent link">&para;</a></h3>
+<p>Test the full S3-based entrypoint locally before submitting to Batch:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="c1"># Set env vars to simulate Batch</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">AWS_PROFILE</span><span class="o">=</span>my-profile
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="nb">export</span><span class="w"> </span><span class="nv">S3_BUCKET</span><span class="o">=</span>my-bucket
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="nb">export</span><span class="w"> </span><span class="nv">S3_INPUT_PREFIX</span><span class="o">=</span>bridge-classification/ml-data/source
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a><span class="nb">export</span><span class="w"> </span><span class="nv">S3_MANIFEST_URI</span><span class="o">=</span>s3://my-bucket/bridge-classification/test_manifest.txt
+<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a><span class="nb">export</span><span class="w"> </span><span class="nv">S3_MODEL_URI</span><span class="o">=</span>s3://my-bucket/bridge-classification/models/v3/epoch<span class="o">=</span><span class="m">35</span>.ckpt
+<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a><span class="nb">export</span><span class="w"> </span><span class="nv">S3_OUTPUT_PREFIX</span><span class="o">=</span>scratch/your-name/predictions-test
+<a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a><span class="nb">export</span><span class="w"> </span><span class="nv">ARRAY_SIZE</span><span class="o">=</span><span class="m">1</span>
+<a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a><span class="nb">export</span><span class="w"> </span><span class="nv">AWS_BATCH_JOB_ARRAY_INDEX</span><span class="o">=</span><span class="m">0</span>
+<a id="__codelineno-17-10" name="__codelineno-17-10" href="#__codelineno-17-10"></a><span class="nb">export</span><span class="w"> </span><span class="nv">INFERENCE_MODE</span><span class="o">=</span>masked
+<a id="__codelineno-17-11" name="__codelineno-17-11" href="#__codelineno-17-11"></a>
+<a id="__codelineno-17-12" name="__codelineno-17-12" href="#__codelineno-17-12"></a>python<span class="w"> </span>scripts/batch_entrypoint.py
+</code></pre></div>
+<hr />
+<h2 id="cost-tracking">Cost Tracking<a class="headerlink" href="#cost-tracking" title="Permanent link">&para;</a></h2>
+<p>All Batch resources are tagged with <code>Project = bridge-classifier</code>. Tags propagate to the underlying ECS tasks via <code>propagate_tags = true</code> on the job definition.</p>
+<p><strong>Cost Explorer:</strong> Go to <a href="https://console.aws.amazon.com/cost-management/home#/cost-explorer">AWS Cost Explorer</a>, group by <strong>Tag → Project</strong>, and filter to <code>bridge-classifier</code>.</p>
+<p><strong>Estimated costs</strong> (printed by submit script with <code>--dry-run</code>):</p>
+<ul>
+<li>g4dn.xlarge SPOT: ~$0.234/hr per child (fluctuates - check https://aws.amazon.com/ec2/spot/pricing/)</li>
+<li>Per-bridge inference: 2-5 seconds typical (varies with point cloud size)</li>
+<li>The submit script's cost estimate is based on child compute time only. Actual AWS billing includes instance startup overhead, SPOT idle time, and minimum billing increments - expect 3-5x the estimate. Use Cost Explorer filtered by <code>Project</code> tag for actual spend.</li>
+</ul>
+<hr />
+<h2 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h2>
+<p><strong>Job stuck in RUNNABLE</strong>: Compute environment may not have capacity. Check that <code>max_vcpus</code> is sufficient and the instance type is available in your subnets/AZs.</p>
+<p><strong>"Required environment variables not set" error</strong>: The entrypoint validates that all S3 env vars are set. These come from the Terraform job definition. Run <code>cd infra/terraform/app &amp;&amp; terraform apply</code> to ensure the job definition has all required env vars.</p>
+<p><strong>Model loading errors</strong>: Ensure the checkpoint was saved by <code>BridgeLightningModule</code> (Lightning format with <code>state_dict</code> key). The inference script handles both Lightning checkpoints and raw state dicts.</p>
+<p><strong>GPU out of memory</strong>: Large bridges with dense point clouds can exceed GPU memory. Use a larger instance or increase <code>--voxel-size</code> (coarser voxels = fewer voxels = less memory).</p>
+<p><strong>S3 permission denied</strong>: The Batch job IAM role is managed by the app layer and scoped to the <code>data_bucket</code>. Verify that <code>s3_bucket</code> matches <code>data_bucket</code> in the app tfvars.</p>
+<p><strong>SPOT instance interruptions</strong>: The job definition auto-retries up to <code>retry_attempts</code> times on SPOT interruption. Combined with skip-if-exists, retries are cheap. For critical runs with no tolerance for delay, set <code>use_spot = false</code>.</p>
+<p><strong>Per-bridge timeout (<code>INFER_FAILED reason=timeout</code> in logs)</strong>: A bridge exceeded <code>bridge_timeout</code> seconds during inference.
+Usually caused by large point clouds.
+Increase <code>bridge_timeout</code> in <code>infra/terraform/app/terraform.tfvars</code> or via <code>--env BRIDGE_TIMEOUT=300</code> at submit time.</p>
+<p><strong>S3 throttling (503 SlowDown)</strong>: The S3 client uses adaptive retry (3 attempts). If you see persistent throttling, your request rate may exceed the prefix partition limit. Input files distributed across HUC prefixes naturally mitigate this.</p>
+<p><strong>Audit shows missing outputs</strong>: Re-submit with the missing manifest. Skip-if-exists ensures already-completed bridges are not reprocessed. Repeat audit → re-submit until all outputs are present.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "navigation.indexes", "navigation.expand", "navigation.top", "search.highlight", "search.suggest", "content.action.edit", "content.code.copy", "content.tooltips"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"provider": "mike"}}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

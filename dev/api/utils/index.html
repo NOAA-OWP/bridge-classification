@@ -1,0 +1,2495 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="USGS LiDAR Bridge Point Cloud Classification Pipeline">
+      
+      
+      
+      
+        <link rel="prev" href="../inference-cloud/">
+      
+      
+        <link rel="next" href="../../notebooks/dataset_overview/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Utility Scripts - Bridge Classification</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#utility-scripts" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Bridge Classification" class="md-header__button md-logo" aria-label="Bridge Classification" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Bridge Classification
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Utility Scripts
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/NOAA-OWP/bridge-classification" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    NOAA-OWP/bridge-classification
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../architecture/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../" class="md-tabs__link">
+          
+  
+  
+    
+  
+  API Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../notebooks/dataset_overview/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Notebooks
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Bridge Classification" class="md-nav__button md-logo" aria-label="Bridge Classification" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Bridge Classification
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/NOAA-OWP/bridge-classification" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    NOAA-OWP/bridge-classification
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../data-pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Pipeline
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../aws-batch-inference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AWS Batch Inference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment-runbook/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment Runbook
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../decisions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design Decisions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../core/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Core & Constants
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data-io/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data I/O & Processing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../weak-supervision/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Weak Supervision
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../model-training/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Model & Training
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../inference-cloud/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Inference & Cloud
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Utility Scripts
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Utility Scripts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#evaluation-registry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Evaluation &amp; Registry
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Evaluation &amp; Registry">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#utilsevaluate_modelpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        utils/evaluate_model.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#utilscompare_experimentspy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        utils/compare_experiments.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#utilsregister_modelpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        utils/register_model.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#utilspromote_modelpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        utils/promote_model.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#data-preparation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Data Preparation
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Data Preparation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#utilssplit_datapy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        utils/split_data.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#utilscalculate_weightspy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        utils/calculate_weights.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#utilsprepare_runpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        utils/prepare_run.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#utilsdownload_osm_hucspy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        utils/download_osm_hucs.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#utilsdownload_bridge_lidarpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        utils/download_bridge_lidar.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#visualization" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Visualization
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Visualization">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#utilsvisualize_pointcloudpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        utils/visualize_pointcloud.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#utilsvisualize_metricspy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        utils/visualize_metrics.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#verification-sampling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verification &amp; Sampling
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Verification &amp; Sampling">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#utilsverify_lidar_subsetpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        utils/verify_lidar_subset.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#utilsextract_complex_bridgespy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        utils/extract_complex_bridges.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#utilsfind_new_source_candidatespy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        utils/find_new_source_candidates.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#utilsverify_ransac_paritypy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        utils/verify_ransac_parity.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Notebooks
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Notebooks
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../notebooks/dataset_overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dataset Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../notebooks/ransac_deck_planes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    RANSAC deck plane visualization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../notebooks/training_plots/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Training Plots
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#evaluation-registry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Evaluation &amp; Registry
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Evaluation &amp; Registry">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#utilsevaluate_modelpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        utils/evaluate_model.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#utilscompare_experimentspy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        utils/compare_experiments.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#utilsregister_modelpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        utils/register_model.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#utilspromote_modelpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        utils/promote_model.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#data-preparation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Data Preparation
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Data Preparation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#utilssplit_datapy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        utils/split_data.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#utilscalculate_weightspy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        utils/calculate_weights.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#utilsprepare_runpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        utils/prepare_run.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#utilsdownload_osm_hucspy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        utils/download_osm_hucs.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#utilsdownload_bridge_lidarpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        utils/download_bridge_lidar.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#visualization" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Visualization
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Visualization">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#utilsvisualize_pointcloudpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        utils/visualize_pointcloud.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#utilsvisualize_metricspy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        utils/visualize_metrics.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#verification-sampling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verification &amp; Sampling
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Verification &amp; Sampling">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#utilsverify_lidar_subsetpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        utils/verify_lidar_subset.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#utilsextract_complex_bridgespy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        utils/extract_complex_bridges.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#utilsfind_new_source_candidatespy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        utils/find_new_source_candidates.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#utilsverify_ransac_paritypy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        utils/verify_ransac_parity.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/NOAA-OWP/bridge-classification/edit/main/docs/api/utils.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="utility-scripts">Utility Scripts<a class="headerlink" href="#utility-scripts" title="Permanent link">&para;</a></h1>
+<p>Command-line tools for evaluation, data preparation, visualization, and verification.
+These scripts live in <code>utils/</code> and are not importable as library modules.
+Run each with <code>--help</code> for the full argument list.</p>
+<div class="admonition tip">
+<p class="admonition-title">See also</p>
+<ul>
+<li><a href="../../data-pipeline/">Data Pipeline</a> for how these scripts fit into the end-to-end flow</li>
+<li><a href="../../aws-batch-inference/">AWS Batch Inference</a> for the batch scripts in <code>scripts/</code></li>
+</ul>
+</div>
+<hr />
+<h2 id="evaluation-registry">Evaluation &amp; Registry<a class="headerlink" href="#evaluation-registry" title="Permanent link">&para;</a></h2>
+<h3 id="utilsevaluate_modelpy"><code>utils/evaluate_model.py</code><a class="headerlink" href="#utilsevaluate_modelpy" title="Permanent link">&para;</a></h3>
+<p>Evaluates a trained model against human-annotated (gold) data.
+Reports per-class and binary metrics, compares against the silver baseline, and optionally updates the S3 model registry.</p>
+<table>
+<thead>
+<tr>
+<th>Argument</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--gold-dir</code></td>
+<td><em>(required)</em></td>
+<td>Gold (human-annotated) data directory (HUC-organized LAS/LAZ)</td>
+</tr>
+<tr>
+<td><code>--test-dir</code></td>
+<td><em>(required)</em></td>
+<td>Test data directory with silver LAZ files</td>
+</tr>
+<tr>
+<td><code>--model</code></td>
+<td>None</td>
+<td>Path to .ckpt checkpoint (required if <code>--inference-dir</code> not provided)</td>
+</tr>
+<tr>
+<td><code>--inference-dir</code></td>
+<td>None</td>
+<td>Pre-computed inference output directory (skips running model)</td>
+</tr>
+<tr>
+<td><code>--output-dir</code></td>
+<td><code>./evaluation_results</code></td>
+<td>Output directory for results</td>
+</tr>
+<tr>
+<td><code>--device</code></td>
+<td><code>auto</code></td>
+<td>Device for inference (<code>cpu</code>, <code>cuda</code>, <code>auto</code>)</td>
+</tr>
+<tr>
+<td><code>--voxel-size</code></td>
+<td>0.1</td>
+<td>Voxel size in meters, must match training</td>
+</tr>
+<tr>
+<td><code>--bridge-timeout</code></td>
+<td>150</td>
+<td>Per-bridge inference timeout in seconds</td>
+</tr>
+<tr>
+<td><code>--no-plot</code></td>
+<td>False</td>
+<td>Skip confusion matrix PNG generation</td>
+</tr>
+<tr>
+<td><code>--register</code></td>
+<td>False</td>
+<td>Update model registry with evaluation metrics</td>
+</tr>
+<tr>
+<td><code>--model-name</code></td>
+<td>None</td>
+<td>Registry model name (required with <code>--register</code>)</td>
+</tr>
+<tr>
+<td><code>--eval-name</code></td>
+<td><code>gold-{N}</code></td>
+<td>Evaluation set name for registry key</td>
+</tr>
+<tr>
+<td><code>--bucket</code></td>
+<td><code>my-bucket</code></td>
+<td>S3 bucket</td>
+</tr>
+<tr>
+<td><code>--prefix</code></td>
+<td><code>bridge-classification/models</code></td>
+<td>S3 prefix</td>
+</tr>
+<tr>
+<td><code>--profile</code></td>
+<td>None</td>
+<td>AWS profile name</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Outputs:</strong> <code>evaluation_metrics.json</code>, <code>per_bridge_metrics.csv</code>, <code>confusion_matrix.png</code>, <code>confusion_matrix_binary.png</code></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># Full evaluation with inference (GPU)</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>python<span class="w"> </span>utils/evaluate_model.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span>--gold-dir<span class="w"> </span>./data/ml-data/gold-data<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span>--test-dir<span class="w"> </span>./data/ml-data/testing<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">    </span>--model<span class="w"> </span>./experiments/bridge-base-all-data-v3/version_0/checkpoints/best.ckpt<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">    </span>--output-dir<span class="w"> </span>./evaluation_results/
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="c1"># Pre-computed inference (no GPU)</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>python<span class="w"> </span>utils/evaluate_model.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">    </span>--gold-dir<span class="w"> </span>./data/ml-data/gold-data<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">    </span>--test-dir<span class="w"> </span>./data/ml-data/testing<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">    </span>--inference-dir<span class="w"> </span>./evaluation_results/v3/inference_output<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">    </span>--output-dir<span class="w"> </span>./evaluation_results/v3
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="c1"># Evaluate and register results to S3</span>
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>python<span class="w"> </span>utils/evaluate_model.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="w">    </span>--gold-dir<span class="w"> </span>./data/ml-data/gold-data<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="w">    </span>--test-dir<span class="w"> </span>./data/ml-data/testing<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="w">    </span>--inference-dir<span class="w"> </span>./evaluation_results/v3/inference_output<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a><span class="w">    </span>--register<span class="w"> </span>--model-name<span class="w"> </span>bridge-base-all-data-v3<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="w">    </span>--bucket<span class="w"> </span>my-bucket<span class="w"> </span>--prefix<span class="w"> </span>bridge-classification/models<span class="w"> </span>--profile<span class="w"> </span>my-profile
+</code></pre></div>
+<hr />
+<h3 id="utilscompare_experimentspy"><code>utils/compare_experiments.py</code><a class="headerlink" href="#utilscompare_experimentspy" title="Permanent link">&para;</a></h3>
+<p>Prints a sorted comparison table of model evaluation metrics from <code>registry.json</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Argument</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--registry</code></td>
+<td><code>data/models/registry.json</code></td>
+<td>Local registry path</td>
+</tr>
+<tr>
+<td><code>--eval-set</code></td>
+<td>all</td>
+<td>Evaluation set to compare</td>
+</tr>
+<tr>
+<td><code>--sort</code></td>
+<td><code>bridge_deck_iou</code></td>
+<td>Metric to sort by (descending)</td>
+</tr>
+<tr>
+<td><code>--from-s3</code></td>
+<td>False</td>
+<td>Load registry from S3</td>
+</tr>
+<tr>
+<td><code>--bucket</code></td>
+<td><code>my-bucket</code></td>
+<td>S3 bucket (with <code>--from-s3</code>)</td>
+</tr>
+<tr>
+<td><code>--prefix</code></td>
+<td><code>bridge-classification/models</code></td>
+<td>S3 prefix (with <code>--from-s3</code>)</td>
+</tr>
+<tr>
+<td><code>--profile</code></td>
+<td>None</td>
+<td>AWS profile name</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="utilsregister_modelpy"><code>utils/register_model.py</code><a class="headerlink" href="#utilsregister_modelpy" title="Permanent link">&para;</a></h3>
+<p>Registers a trained model to the S3-based model registry.
+Uploads the best checkpoint + config files, creates lineage tracking for fine-tuned models.</p>
+<table>
+<thead>
+<tr>
+<th>Argument</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--exp-dir</code></td>
+<td><em>(required)</em></td>
+<td>Path to Lightning experiment version directory</td>
+</tr>
+<tr>
+<td><code>--checkpoint</code></td>
+<td><code>best</code></td>
+<td><code>best</code>, <code>last</code>, or a specific filename</td>
+</tr>
+<tr>
+<td><code>--name</code></td>
+<td><em>(required)</em></td>
+<td>Model name for the registry</td>
+</tr>
+<tr>
+<td><code>--description</code></td>
+<td><em>(required)</em></td>
+<td>Human-readable description</td>
+</tr>
+<tr>
+<td><code>--parent</code></td>
+<td>None</td>
+<td>Parent model name (for fine-tuned models)</td>
+</tr>
+<tr>
+<td><code>--bucket</code></td>
+<td><em>(required)</em></td>
+<td>S3 bucket</td>
+</tr>
+<tr>
+<td><code>--prefix</code></td>
+<td><em>(required)</em></td>
+<td>S3 prefix (e.g. <code>bridge-classification/models</code>)</td>
+</tr>
+<tr>
+<td><code>--profile</code></td>
+<td>None</td>
+<td>AWS profile name</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="utilspromote_modelpy"><code>utils/promote_model.py</code><a class="headerlink" href="#utilspromote_modelpy" title="Permanent link">&para;</a></h3>
+<p>Promotes a model to production in the S3 model registry.
+Demotes the current production model back to "evaluated" and prints the <code>s3_checkpoint_uri</code> for updating <code>terraform.tfvars</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Argument</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--name</code></td>
+<td><em>(required)</em></td>
+<td>Model name to promote</td>
+</tr>
+<tr>
+<td><code>--bucket</code></td>
+<td><code>my-bucket</code></td>
+<td>S3 bucket</td>
+</tr>
+<tr>
+<td><code>--prefix</code></td>
+<td><code>bridge-classification/models</code></td>
+<td>S3 prefix</td>
+</tr>
+<tr>
+<td><code>--profile</code></td>
+<td>None</td>
+<td>AWS profile name</td>
+</tr>
+<tr>
+<td><code>--dry-run</code></td>
+<td>False</td>
+<td>Show changes without modifying S3</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="data-preparation">Data Preparation<a class="headerlink" href="#data-preparation" title="Permanent link">&para;</a></h2>
+<h3 id="utilssplit_datapy"><code>utils/split_data.py</code><a class="headerlink" href="#utilssplit_datapy" title="Permanent link">&para;</a></h3>
+<p>Splits bridge data into train/validation/test by HUC with per-HUC bridge-level splitting.</p>
+<table>
+<thead>
+<tr>
+<th>Argument</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--laz-dir</code></td>
+<td><code>./data/ml-data/silver_training</code></td>
+<td>Source LAZ/LAS directory</td>
+</tr>
+<tr>
+<td><code>--npy-dir</code></td>
+<td><code>./data/ml-data/silver_training_normalized</code></td>
+<td>Normalized NPY directory</td>
+</tr>
+<tr>
+<td><code>--output-dir</code></td>
+<td><code>./data/ml-data</code></td>
+<td>Output base directory</td>
+</tr>
+<tr>
+<td><code>--holdout-test-ids</code></td>
+<td>None</td>
+<td>File with fixed test IDs (<code>huc_id/bridge_stem</code> per line)</td>
+</tr>
+<tr>
+<td><code>--train-ratio</code></td>
+<td>0.70</td>
+<td>Training split fraction</td>
+</tr>
+<tr>
+<td><code>--val-ratio</code></td>
+<td>0.15</td>
+<td>Validation split fraction</td>
+</tr>
+<tr>
+<td><code>--test-ratio</code></td>
+<td>0.15</td>
+<td>Test split fraction</td>
+</tr>
+<tr>
+<td><code>--symlink</code></td>
+<td>False</td>
+<td>Create symlinks instead of copies</td>
+</tr>
+<tr>
+<td><code>--seed</code></td>
+<td>27</td>
+<td>Random seed</td>
+</tr>
+<tr>
+<td><code>--workers</code></td>
+<td><code>cpu_count</code></td>
+<td>Parallel workers</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="utilscalculate_weightspy"><code>utils/calculate_weights.py</code><a class="headerlink" href="#utilscalculate_weightspy" title="Permanent link">&para;</a></h3>
+<p>Computes inverse-frequency class weights from preprocessed <code>.json</code> metadata.</p>
+<table>
+<thead>
+<tr>
+<th>Argument</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--data-dir</code></td>
+<td><code>./data/ml-data/training</code></td>
+<td>Directory containing <code>.json</code> metadata files</td>
+</tr>
+<tr>
+<td><code>--output</code></td>
+<td>None</td>
+<td>Output JSON file path</td>
+</tr>
+<tr>
+<td><code>--verbose</code></td>
+<td>False</td>
+<td>Print raw counts and weights</td>
+</tr>
+<tr>
+<td><code>--workers</code></td>
+<td>1</td>
+<td>Parallel workers</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="utilsprepare_runpy"><code>utils/prepare_run.py</code><a class="headerlink" href="#utilsprepare_runpy" title="Permanent link">&para;</a></h3>
+<p>Prepares a self-contained pipeline run directory from a flat bridge GeoPackage.
+Splits the input into per-HUC GeoPackages matching the directory structure expected by <code>download_and_weak_supervise_hucs.py</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Argument</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--input</code></td>
+<td><em>(required)</em></td>
+<td>Path to flat input GPKG file</td>
+</tr>
+<tr>
+<td><code>--run-name</code></td>
+<td><em>(required)</em></td>
+<td>Short name for this run</td>
+</tr>
+<tr>
+<td><code>--huc-column</code></td>
+<td><code>huc8</code></td>
+<td>Column name to group bridges by</td>
+</tr>
+<tr>
+<td><code>--osmid-column</code></td>
+<td><code>osmid</code></td>
+<td>Column name for bridge OSM IDs</td>
+</tr>
+<tr>
+<td><code>--gpkg-template</code></td>
+<td><code>osm_bridges_lidar_subset__{huc_id}.gpkg</code></td>
+<td>Filename template</td>
+</tr>
+<tr>
+<td><code>--runs-dir</code></td>
+<td><code>./data/runs</code></td>
+<td>Root directory for runs</td>
+</tr>
+<tr>
+<td><code>--force</code></td>
+<td>False</td>
+<td>Overwrite existing run directory</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Output structure:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>data/runs/{run-name}/
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>├── input/{original_filename}.gpkg
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>├── hucs/{huc_id}/osm_bridges_lidar_subset__{huc_id}.gpkg
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>├── source/
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>├── silver_training/
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>├── predictions/
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>└── run_config.json
+</code></pre></div>
+<hr />
+<h3 id="utilsdownload_osm_hucspy"><code>utils/download_osm_hucs.py</code><a class="headerlink" href="#utilsdownload_osm_hucspy" title="Permanent link">&para;</a></h3>
+<p>Downloads OSM bridge GeoPackages by HUC from S3.
+Has two modes: <strong>info</strong> (omit <code>--dir</code>, lists HUC IDs and bridge counts) and <strong>download</strong> (provide <code>--dir</code>, saves per-HUC folders).</p>
+<table>
+<thead>
+<tr>
+<th>Argument</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--profile</code></td>
+<td>None</td>
+<td>AWS profile name</td>
+</tr>
+<tr>
+<td><code>--dir</code></td>
+<td>None</td>
+<td>Local output directory (enables download mode)</td>
+</tr>
+<tr>
+<td><code>--bucket</code></td>
+<td><code>noaa-nws-owp-fim</code></td>
+<td>S3 bucket name</td>
+</tr>
+<tr>
+<td><code>--prefix</code></td>
+<td><code>hand_fim/hand_4_8_7_2/</code></td>
+<td>Base S3 prefix</td>
+</tr>
+<tr>
+<td><code>--all</code></td>
+<td>False</td>
+<td>Download all HUCs (otherwise uses <code>--limit</code>)</td>
+</tr>
+<tr>
+<td><code>--limit</code></td>
+<td>100</td>
+<td>Number of HUCs to process</td>
+</tr>
+<tr>
+<td><code>--workers</code></td>
+<td><code>min(32, cpu_count+4)</code></td>
+<td>Worker processes</td>
+</tr>
+<tr>
+<td><code>--save-subsets</code></td>
+<td><code>both</code></td>
+<td>Which filtered subsets: <code>lidar</code>, <code>not_lidar</code>, or <code>both</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="utilsdownload_bridge_lidarpy"><code>utils/download_bridge_lidar.py</code><a class="headerlink" href="#utilsdownload_bridge_lidarpy" title="Permanent link">&para;</a></h3>
+<p>Downloads raw lidar point clouds for OSM bridges without applying weak supervision.
+Lightweight alternative to <code>download_and_weak_supervise_hucs.py</code> for bridges that only need source LAZ.</p>
+<table>
+<thead>
+<tr>
+<th>Argument</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--hucs-dir</code></td>
+<td><code>./data/osm/hucs</code></td>
+<td>Directory containing per-HUC GPKG files</td>
+</tr>
+<tr>
+<td><code>--lidar-resources</code></td>
+<td><code>./data/usgs_entwine/lidar_resources.geojson</code></td>
+<td>USGS EPT source index</td>
+</tr>
+<tr>
+<td><code>--output-dir</code></td>
+<td><code>./data/ml-data/not_lidar_source</code></td>
+<td>Output directory</td>
+</tr>
+<tr>
+<td><code>--gpkg-pattern</code></td>
+<td><code>osm_bridges_lidar_subset__*.gpkg</code></td>
+<td>Glob pattern for GPKG files</td>
+</tr>
+<tr>
+<td><code>--hucs</code></td>
+<td>all</td>
+<td>Space-separated HUC IDs to process</td>
+</tr>
+<tr>
+<td><code>--osm-ids</code></td>
+<td>all</td>
+<td>Space-separated OSM IDs to process</td>
+</tr>
+<tr>
+<td><code>--skip-existing</code></td>
+<td>False</td>
+<td>Skip bridges already downloaded</td>
+</tr>
+<tr>
+<td><code>--workers</code></td>
+<td>CPU count</td>
+<td>Parallel worker processes</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="visualization">Visualization<a class="headerlink" href="#visualization" title="Permanent link">&para;</a></h2>
+<h3 id="utilsvisualize_pointcloudpy"><code>utils/visualize_pointcloud.py</code><a class="headerlink" href="#utilsvisualize_pointcloudpy" title="Permanent link">&para;</a></h3>
+<p>Renders side-by-side 3D LiDAR point cloud figures for poster/presentation use.</p>
+<table>
+<thead>
+<tr>
+<th>Mode</th>
+<th>Left panel</th>
+<th>Right panel</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>gold-vs-model</code></td>
+<td>Human annotations (gold NPY)</td>
+<td>Model predictions (inference LAZ)</td>
+</tr>
+<tr>
+<td><code>source-vs-silver</code></td>
+<td>Raw elevation (source LAZ)</td>
+<td>Weak supervision labels (silver LAZ)</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>Argument</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--gold</code> / <code>--source</code></td>
+<td><em>(required)</em></td>
+<td>Left panel input file</td>
+</tr>
+<tr>
+<td><code>--model</code> / <code>--silver</code></td>
+<td><em>(required)</em></td>
+<td>Right panel input file</td>
+</tr>
+<tr>
+<td><code>-o</code> / <code>--output</code></td>
+<td><code>notebooks/outputs/gold_vs_model.png</code></td>
+<td>Output PNG file path</td>
+</tr>
+<tr>
+<td><code>--title</code></td>
+<td>None</td>
+<td>Figure suptitle</td>
+</tr>
+<tr>
+<td><code>--elev</code></td>
+<td>30</td>
+<td>3D view elevation angle</td>
+</tr>
+<tr>
+<td><code>--azim</code></td>
+<td>225</td>
+<td>3D view azimuth angle</td>
+</tr>
+<tr>
+<td><code>--point-size</code></td>
+<td>8</td>
+<td>Scatter point size</td>
+</tr>
+<tr>
+<td><code>--max-points</code></td>
+<td>50000</td>
+<td>Downsample limit per cloud</td>
+</tr>
+<tr>
+<td><code>--dpi</code></td>
+<td>300</td>
+<td>Output resolution</td>
+</tr>
+<tr>
+<td><code>--font-scale</code></td>
+<td>1.0</td>
+<td>Multiply all font sizes (1.5-1.8 for posters)</td>
+</tr>
+<tr>
+<td><code>--border-width</code></td>
+<td>0</td>
+<td>Border width in points (0 = no border)</td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>python<span class="w"> </span>utils/visualize_pointcloud.py<span class="w"> </span>gold-vs-model<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">    </span>--gold<span class="w"> </span>data/ml-data/gold-data-normalized/03070101/bridge_40787878.npy<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">    </span>--model<span class="w"> </span>data/ml-data/evaluation_results/v5-gold-134/inference_output/03070101/bridge_40787878.laz<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">    </span>-o<span class="w"> </span>notebooks/outputs/gold_vs_model.png
+</code></pre></div>
+<hr />
+<h3 id="utilsvisualize_metricspy"><code>utils/visualize_metrics.py</code><a class="headerlink" href="#utilsvisualize_metricspy" title="Permanent link">&para;</a></h3>
+<p>Plots training curves from PyTorch Lightning CSVLogger output.
+Supports single experiment, multi-experiment comparison, and merging resumed runs.</p>
+<table>
+<thead>
+<tr>
+<th>Argument</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--csv</code></td>
+<td>None</td>
+<td>Direct path to <code>metrics.csv</code></td>
+</tr>
+<tr>
+<td><code>--root</code></td>
+<td><code>./experiments</code></td>
+<td>Experiments root directory</td>
+</tr>
+<tr>
+<td><code>--exp</code></td>
+<td><code>bridge_classify_base</code></td>
+<td>Experiment name</td>
+</tr>
+<tr>
+<td><code>--ver</code></td>
+<td>0</td>
+<td>Version number</td>
+</tr>
+<tr>
+<td><code>--compare</code></td>
+<td>None</td>
+<td>Comma-separated experiment names to plot together</td>
+</tr>
+<tr>
+<td><code>--compare-versions</code></td>
+<td>None</td>
+<td>Comma-separated versions for compare mode</td>
+</tr>
+<tr>
+<td><code>--merge-resumed</code></td>
+<td>False</td>
+<td>Merge two experiments into one continuous timeline</td>
+</tr>
+<tr>
+<td><code>--out</code></td>
+<td>None</td>
+<td>Output PNG file path</td>
+</tr>
+<tr>
+<td><code>--annotate-best</code></td>
+<td>None</td>
+<td>Validation metric to annotate with best epoch</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="verification-sampling">Verification &amp; Sampling<a class="headerlink" href="#verification-sampling" title="Permanent link">&para;</a></h2>
+<h3 id="utilsverify_lidar_subsetpy"><code>utils/verify_lidar_subset.py</code><a class="headerlink" href="#utilsverify_lidar_subsetpy" title="Permanent link">&para;</a></h3>
+<p>Verifies that <code>osm_bridges_lidar_subset__{huc_id}.gpkg</code> matches the filtered rows of the full GeoPackage where <code>has_lidar_tif == 'Y'</code>.
+Works with local data or S3. Randomly samples HUCs for spot-check.</p>
+<table>
+<thead>
+<tr>
+<th>Argument</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--dir</code></td>
+<td><code>./data/osm/hucs</code></td>
+<td>Local directory containing HUC subdirs</td>
+</tr>
+<tr>
+<td><code>--s3</code></td>
+<td>False</td>
+<td>Sample and verify from S3</td>
+</tr>
+<tr>
+<td><code>--profile</code></td>
+<td>None</td>
+<td>AWS profile (for <code>--s3</code>)</td>
+</tr>
+<tr>
+<td><code>--bucket</code></td>
+<td><code>fimc-data</code></td>
+<td>S3 bucket (for <code>--s3</code>)</td>
+</tr>
+<tr>
+<td><code>--prefix</code></td>
+<td><code>bridge-classification/osm/hucs/</code></td>
+<td>S3 prefix (for <code>--s3</code>)</td>
+</tr>
+<tr>
+<td><code>--sample</code></td>
+<td>10</td>
+<td>Number of HUCs to sample</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="utilsextract_complex_bridgespy"><code>utils/extract_complex_bridges.py</code><a class="headerlink" href="#utilsextract_complex_bridgespy" title="Permanent link">&para;</a></h3>
+<p>Extracts curved/arched bridge rejections from processing logs.
+Parses logs for bridges rejected by the RANSAC linearity check, deduplicates, excludes bridges already in training data, and produces a stratified random sample.</p>
+<table>
+<thead>
+<tr>
+<th>Argument</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--log-dirs</code></td>
+<td><code>logs/server-logs/</code></td>
+<td>Directory(ies) containing log files</td>
+</tr>
+<tr>
+<td><code>--exclude-ids</code></td>
+<td>None</td>
+<td>ID files to exclude (split files)</td>
+</tr>
+<tr>
+<td><code>--source-s3-uri</code></td>
+<td>None</td>
+<td>S3 URI prefix for source files</td>
+</tr>
+<tr>
+<td><code>--profile</code></td>
+<td>None</td>
+<td>AWS profile name</td>
+</tr>
+<tr>
+<td><code>--output</code></td>
+<td><code>data/ml-data/complex_bridges_all.csv</code></td>
+<td>Output CSV</td>
+</tr>
+<tr>
+<td><code>--sample-output</code></td>
+<td><code>data/ml-data/complex_bridges_sample_100.csv</code></td>
+<td>Stratified sample CSV</td>
+</tr>
+<tr>
+<td><code>--sample-size</code></td>
+<td>100</td>
+<td>Number of bridges to sample</td>
+</tr>
+<tr>
+<td><code>--max-per-huc</code></td>
+<td>3</td>
+<td>Maximum bridges per HUC</td>
+</tr>
+<tr>
+<td><code>--seed</code></td>
+<td>27</td>
+<td>Random seed</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="utilsfind_new_source_candidatespy"><code>utils/find_new_source_candidates.py</code><a class="headerlink" href="#utilsfind_new_source_candidatespy" title="Permanent link">&para;</a></h3>
+<p>Finds bridge+lidar source combinations not in existing train/val/test splits for gold annotation campaigns.
+Scans per-HUC GPKGs, queries lidar sources spatially, diffs against split files, outputs stratified sample.</p>
+<table>
+<thead>
+<tr>
+<th>Argument</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--proven-linear</code></td>
+<td>None</td>
+<td><code>true</code> = same bridge new source; <code>false</code> = unseen bridges; omit = both</td>
+</tr>
+<tr>
+<td><code>--sample-size</code></td>
+<td>50</td>
+<td>Number of candidates to sample (0 = all)</td>
+</tr>
+<tr>
+<td><code>--max-per-huc</code></td>
+<td>3</td>
+<td>Maximum candidates per HUC</td>
+</tr>
+<tr>
+<td><code>--lidar-resources</code></td>
+<td><em>(required)</em></td>
+<td>USGS EPT source index</td>
+</tr>
+<tr>
+<td><code>--hucs-dir</code></td>
+<td><em>(required)</em></td>
+<td>Directory containing per-HUC GPKG files</td>
+</tr>
+<tr>
+<td><code>--split-dir</code></td>
+<td><em>(required)</em></td>
+<td>Directory containing split ID files</td>
+</tr>
+<tr>
+<td><code>--output-dir</code></td>
+<td><em>(required)</em></td>
+<td>Output directory for CSV + helper files</td>
+</tr>
+<tr>
+<td><code>--no-progress</code></td>
+<td>False</td>
+<td>Disable progress bar</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Outputs:</strong> CSV files with candidate bridge+source pairs, plus <code>sample_hucs.txt</code> and <code>sample_osm_ids.txt</code>.</p>
+<hr />
+<h3 id="utilsverify_ransac_paritypy"><code>utils/verify_ransac_parity.py</code><a class="headerlink" href="#utilsverify_ransac_paritypy" title="Permanent link">&para;</a></h3>
+<p>Verifies RANSAC determinism across platforms using synthetic bridge data.
+No CLI arguments. Run directly: <code>python utils/verify_ransac_parity.py</code></p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.indexes", "navigation.expand", "navigation.top", "search.highlight", "search.suggest", "content.action.edit", "content.code.copy", "content.tooltips"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"provider": "mike"}}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
